@@ -45,7 +45,7 @@ export default function WorkOrderForm() {
 
   const selectedClientType = watch('client_type');
   const selectedAssignedTo = watch('assigned_to');
-  const userList = Array.isArray(users) ? users : users?.data || [];
+  const userList = Array.isArray(users) ? users : [];
   const selectedUser = userList.find((u: any) => u.id === selectedAssignedTo);
 
   const queryClient = useQueryClient();
@@ -95,7 +95,7 @@ export default function WorkOrderForm() {
               <Label htmlFor="client_type">Kurum Tipi</Label>
               <Select 
                 value={selectedClientType} 
-                onValueChange={(val) => setValue('client_type', val, { shouldValidate: true })}
+                onValueChange={(val) => setValue('client_type', val ?? "", { shouldValidate: true })}
               >
                 <SelectTrigger className={errors.client_type ? 'border-red-500 w-full' : 'w-full'}>
                   <SelectValue placeholder="Seçiniz...">

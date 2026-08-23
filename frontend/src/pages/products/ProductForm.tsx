@@ -59,10 +59,11 @@ export default function ProductForm({ open, onClose, product }: ProductFormProps
   const unitObj = UNITS.find((u) => u.value === selectedUnit);
 
   const mutation = useMutation({
-    mutationFn: (data: ProductFormValues) => {
+    mutationFn: async (data: ProductFormValues) => {
       if (isEdit) {
         const { initial_cost, ...updatePayload } = data;
-        return productsApi.update(product.id, updatePayload);
+        await productsApi.update(product.id, updatePayload);
+        return data as any;
       }
       return productsApi.create(data);
     },
@@ -107,7 +108,7 @@ export default function ProductForm({ open, onClose, product }: ProductFormProps
             <Label htmlFor="unit">Birim</Label>
             <Select 
               value={selectedUnit} 
-              onValueChange={(val) => setValue('unit', val, { shouldValidate: true })}
+              onValueChange={(val) => setValue('unit', val ?? '', { shouldValidate: true })}
             >
               <SelectTrigger className={errors.unit ? 'border-red-500 w-full' : 'w-full'}>
                 <SelectValue placeholder="Birim Seçiniz">

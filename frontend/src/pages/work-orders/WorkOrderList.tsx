@@ -86,7 +86,7 @@ export default function WorkOrderList() {
         <Select 
           value={status} 
           onValueChange={(v) => {
-            setStatus(v);
+            setStatus(v ?? "all");
             setPage(1);
           }}
         >
@@ -105,7 +105,7 @@ export default function WorkOrderList() {
         <Select 
           value={clientType} 
           onValueChange={(v) => {
-            setClientType(v);
+            setClientType(v ?? "all");
             setPage(1);
           }}
         >

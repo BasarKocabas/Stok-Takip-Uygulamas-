@@ -144,7 +144,7 @@ export default function UserList() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {(Array.isArray(users) ? users : users?.data || []).map((u: any) => (
+            {(Array.isArray(users) ? users : []).map((u: any) => (
               <TableRow key={u.id}>
                 <TableCell className="font-medium">{u.name}</TableCell>
                 <TableCell>{u.email}</TableCell>
@@ -187,7 +187,7 @@ export default function UserList() {
                 )}
               </TableRow>
             ))}
-            {!(Array.isArray(users) ? users.length : users?.data?.length) && (
+            {!(Array.isArray(users) ? users.length : 0) && (
               <TableRow>
                 <TableCell colSpan={6} className="text-center py-6 text-muted-foreground">Kullanıcı bulunamadı</TableCell>
               </TableRow>

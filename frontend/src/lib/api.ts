@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { User, Product, ProductCostHistory, WorkOrder, StockMovement, LaborLog, EquipmentLog, DashboardSummary, AuthResponse, LoginInput, PaginatedResponse } from './types';
+import type { User, Product, ProductCostHistory, WorkOrder, StockMovement, DashboardSummary, AuthResponse, LoginInput, PaginatedResponse } from './types';
 
 const api = axios.create({ baseURL: '/api' });
 

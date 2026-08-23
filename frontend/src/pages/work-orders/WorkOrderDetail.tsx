@@ -132,7 +132,7 @@ export default function WorkOrderDetail() {
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium">İş Emri Durumu</span>
                   {(isAdmin || user?.role === 'manager') ? (
-                    <Select value={order.status} onValueChange={(val) => statusMutation.mutate(val)}>
+                    <Select value={order.status} onValueChange={(val) => statusMutation.mutate((val ?? "draft") as any)}>
                       <SelectTrigger className="w-[140px] h-8 text-xs"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         {Object.entries(WORK_ORDER_STATUSES).map(([key, item]) => (
@@ -360,7 +360,7 @@ function AddMaterialDialog({ orderId, open, onClose }: { orderId: string; open: 
         <div className="space-y-3">
           <div className="grid gap-2">
             <Label>Ürün</Label>
-            <Select value={productId} onValueChange={setProductId}>
+            <Select value={productId} onValueChange={(v) => setProductId(v ?? "")}>
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Ürün Seçin">
                   {selectedProduct ? `${selectedProduct.name} (${selectedProduct.code})` : 'Ürün Seçin'}
@@ -416,7 +416,7 @@ function AddLaborDialog({ orderId, open, onClose }: { orderId: string; open: boo
         <div className="space-y-3">
           <div className="grid gap-2">
             <Label>Personel</Label>
-            <Select value={userId} onValueChange={setUserId}>
+            <Select value={userId} onValueChange={(v) => setUserId(v ?? "")}>
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Personel Seç">
                   {selectedUser ? selectedUser.name : 'Personel Seç'}

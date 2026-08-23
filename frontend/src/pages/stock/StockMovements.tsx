@@ -96,7 +96,7 @@ export default function StockMovements() {
         action={<Button onClick={() => setIsModalOpen(true)}><Plus className="mr-2 h-4 w-4" /> Yeni Hareket</Button>}
       />
       <div className="flex items-center space-x-2 max-w-xs mb-4">
-        <Select value={type} onValueChange={(v) => { setType(v); setPage(1); }}>
+        <Select value={type} onValueChange={(v) => { setType(v ?? "all"); setPage(1); }}>
           <SelectTrigger><SelectValue placeholder="Hareket Tipi Seç" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Tüm Hareketler</SelectItem>
@@ -168,7 +168,7 @@ export default function StockMovements() {
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <div className="grid gap-2">
               <Label>Ürün</Label>
-              <Select value={selectedProductId || ''} onValueChange={(v) => setValue('product_id', v)} required>
+              <Select value={selectedProductId || ''} onValueChange={(v) => setValue('product_id', v ?? "")} required>
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Ürün Seçin">
                     {selectedProduct ? `${selectedProduct.name} (${selectedProduct.code})` : 'Ürün Seçin'}
@@ -188,7 +188,7 @@ export default function StockMovements() {
             </div>
             <div className="grid gap-2">
               <Label>Hareket Tipi</Label>
-              <Select value={selectedMovType || ''} onValueChange={(v) => setValue('movement_type', v)} required>
+              <Select value={selectedMovType || ''} onValueChange={(v) => setValue('movement_type', v ?? "IN")} required>
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Seçiniz">
                     {selectedMovType === 'IN' ? 'Giriş' : selectedMovType === 'OUT' ? 'Çıkış' : 'Seçiniz'}

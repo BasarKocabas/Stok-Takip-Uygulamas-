@@ -67,7 +67,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
             {!collapsed && <span>{item.name}</span>}
             {item.path === '/stock-movements' && user?.role === 'admin' && (summary?.pending_approvals || 0) > 0 && (
               <span className="ml-auto rounded-full bg-amber-500 px-1.5 py-0.5 text-[11px] font-bold text-white">
-                {summary.pending_approvals}
+                {summary?.pending_approvals}
               </span>
             )}
           </NavLink>
