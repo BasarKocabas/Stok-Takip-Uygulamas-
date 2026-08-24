@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { productsApi } from '@/lib/api';
 import { PageHeader } from '@/components/shared/PageHeader';
-import { LoadingSpinner } from '@/components/shared/LoadingSpinner';
+import { LoadingSkeleton } from '@/components/shared/LoadingSkeleton';
 import ProductForm from './ProductForm';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { Button } from '@/components/ui/button';
@@ -13,6 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { ArrowLeft, Edit } from 'lucide-react';
 import { format } from 'date-fns';
 import { tr } from 'date-fns/locale';
+import { formatCurrency } from '@/lib/formatters';
 
 export default function ProductDetail() {
   const { id } = useParams<{ id: string }>();
@@ -37,14 +38,14 @@ export default function ProductDetail() {
     enabled: !!id,
   });
 
-  if (isLoading) return <LoadingSpinner />;
+  if (isLoading) return <LoadingSkeleton variant="detail" />;
   if (!product) return <div>Ürün bulunamadı</div>;
 
   const isCritical = product.current_stock < product.min_stock_level;
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center space-x-4 mb-2">
+      <div className="mb-2 flex items-start gap-6">
         <Button variant="ghost" size="icon" onClick={() => navigate('/products')}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
@@ -52,7 +53,7 @@ export default function ProductDetail() {
           title={product.name} 
           subtitle={product.code}
           action={
-            <Button onClick={() => setIsEditOpen(true)} variant="outline">
+            <Button onClick={() => setIsEditOpen(true)} variant="outline" className="sm:ml-5">
               <Edit className="mr-2 h-4 w-4" /> Düzenle
             </Button>
           }
@@ -78,7 +79,7 @@ export default function ProductDetail() {
             <div>
               <p className="text-sm text-muted-foreground">Güncel Birim Maliyet</p>
               <p className="font-medium">
-                ₺{((costHistory?.[0]?.unit_cost) || (product?.cost_history?.[0]?.unit_cost) || 0).toLocaleString('tr-TR')}
+                {formatCurrency((costHistory?.[0]?.unit_cost) || (product?.cost_history?.[0]?.unit_cost))}
               </p>
             </div>
           </CardContent>
@@ -139,7 +140,7 @@ export default function ProductDetail() {
                       {costHistory?.map((cost: any) => (
                         <TableRow key={cost.id}>
                           <TableCell>{cost.effective_date || (cost.created_at ? format(new Date(cost.created_at), 'dd MMM yyyy', { locale: tr }) : '-')}</TableCell>
-                          <TableCell className="text-right font-medium">₺{Number(cost.unit_cost).toLocaleString('tr-TR')}</TableCell>
+                          <TableCell className="text-right font-medium">{formatCurrency(cost.unit_cost)}</TableCell>
                           <TableCell>{cost.notes || '-'}</TableCell>
                         </TableRow>
                       ))}

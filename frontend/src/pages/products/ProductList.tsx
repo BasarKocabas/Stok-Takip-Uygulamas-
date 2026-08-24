@@ -4,7 +4,7 @@ import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { productsApi } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { PageHeader } from '@/components/shared/PageHeader';
-import { LoadingSpinner } from '@/components/shared/LoadingSpinner';
+import { LoadingSkeleton } from '@/components/shared/LoadingSkeleton';
 import { PaginationControls } from '@/components/shared/PaginationControls';
 import ProductForm from './ProductForm';
 import { Button } from '@/components/ui/button';
@@ -63,7 +63,7 @@ export default function ProductList() {
       </div>
 
       {isLoading ? (
-        <LoadingSpinner />
+        <LoadingSkeleton />
       ) : (
         <div className="space-y-4">
           {/* Mobile View */}
@@ -73,7 +73,7 @@ export default function ProductList() {
               return (
                 <Card 
                   key={product.id} 
-                  className={`cursor-pointer transition-shadow hover:shadow-md ${isCritical ? 'border-red-300 bg-red-50/20' : ''}`}
+                  className={`cursor-pointer transition-shadow hover:shadow-md ${isCritical ? 'border-l-[3px] border-l-red-500' : ''}`}
                   onClick={() => navigate(`/products/${product.id}`)}
                 >
                   <CardContent className="p-4">
@@ -106,7 +106,7 @@ export default function ProductList() {
           </div>
 
           {/* Desktop Table View */}
-          <div className="hidden md:block bg-white rounded-md border">
+          <Card className="hidden overflow-x-auto rounded-md py-0 md:block">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -124,10 +124,10 @@ export default function ProductList() {
                   return (
                     <TableRow 
                       key={product.id} 
-                      className={`cursor-pointer hover:bg-gray-50 ${isCritical ? 'bg-red-50' : ''}`}
+                      className="cursor-pointer hover:bg-gray-50"
                       onClick={() => navigate(`/products/${product.id}`)}
                     >
-                      <TableCell className="font-medium font-mono">{product.code}</TableCell>
+                      <TableCell className={`font-medium font-mono ${isCritical ? 'border-l-[3px] border-l-red-500' : ''}`}>{product.code}</TableCell>
                       <TableCell>{product.name}</TableCell>
                       <TableCell>{product.unit}</TableCell>
                       <TableCell className={`text-right font-bold ${isCritical ? 'text-red-600' : ''}`}>
@@ -154,7 +154,7 @@ export default function ProductList() {
               </TableBody>
             </Table>
             <PaginationControls pagination={products?.pagination} onPageChange={setPage} />
-          </div>
+          </Card>
         </div>
       )}
 

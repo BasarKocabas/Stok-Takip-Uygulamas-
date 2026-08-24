@@ -64,24 +64,12 @@ router.post('/', validateRequest(stockMovementSchema), async (req: AuthRequest, 
       }
     }
     
-    if (movement_type === 'IN') {
-      await db.transaction(async (trx) => {
-        const id = uuidv4();
-        await trx('stock_movements').insert({
-          id, product_id, work_order_id, movement_type, quantity, notes,
-          is_approved: true, created_by: req.user?.id, approved_by: req.user?.id, approved_at: trx.fn.now()
-        });
-        await trx('products').where({ id: product_id }).increment('current_stock', quantity);
-      });
-      res.status(201).json({ success: true, message: 'Giriş işlemi otomatik onaylandı' });
-    } else {
-      const id = uuidv4();
-      await db('stock_movements').insert({
-        id, product_id, work_order_id, movement_type, quantity, notes,
-        is_approved: false, created_by: req.user?.id
-      });
-      res.status(201).json({ success: true, message: 'Çıkış işlemi onaya gönderildi' });
-    }
+    const id = uuidv4();
+    await db('stock_movements').insert({
+      id, product_id, work_order_id, movement_type, quantity, notes,
+      is_approved: false, created_by: req.user?.id
+    });
+    res.status(201).json({ success: true, message: 'Hareket onaya gönderildi' });
   } catch (error) {
     next(error);
   }
@@ -98,10 +86,14 @@ router.post('/:id/approve', requireAdmin, async (req: AuthRequest, res: Response
       res.status(400).json({ error: 'Bu hareket zaten onaylanmış' });
       return;
     }
-    if (movement.movement_type === 'OUT') {
-      await db.transaction(async (trx) => {
-        const product = await trx('products').where({ id: movement.product_id }).first();
-        if (!product || product.current_stock < movement.quantity) {
+    await db.transaction(async (trx) => {
+      const product = await trx('products').where({ id: movement.product_id }).first();
+      if (!product) {
+        throw new Error('Ürün bulunamadı');
+      }
+
+      if (movement.movement_type === 'OUT') {
+        if (product.current_stock < movement.quantity) {
           throw new Error('Yetersiz stok');
         }
         await trx('products').where({ id: movement.product_id }).decrement('current_stock', movement.quantity);
@@ -110,19 +102,24 @@ router.post('/:id/approve', requireAdmin, async (req: AuthRequest, res: Response
             .where({ work_order_id: movement.work_order_id, product_id: movement.product_id })
             .increment('used_quantity', movement.quantity);
         }
-        await trx('stock_movements').where({ id: movement.id }).update({
-          is_approved: true,
-          approved_by: req.user?.id,
-          approved_at: trx.fn.now()
-        });
+      } else if (movement.movement_type === 'IN') {
+        await trx('products').where({ id: movement.product_id }).increment('current_stock', movement.quantity);
+      } else {
+        throw new Error('Geçersiz işlem');
+      }
+
+      await trx('stock_movements').where({ id: movement.id }).update({
+        is_approved: true,
+        approved_by: req.user?.id,
+        approved_at: trx.fn.now()
       });
-      res.json({ success: true });
-    } else {
-      res.status(400).json({ error: 'Geçersiz işlem' });
-    }
+    });
+    res.json({ success: true });
   } catch (error: any) {
     if (error.message === 'Yetersiz stok') {
       res.status(400).json({ error: 'Onaylamak için yetersiz stok. İşlem reddedildi.' });
+    } else if (error.message === 'Ürün bulunamadı' || error.message === 'Geçersiz işlem') {
+      res.status(400).json({ error: error.message });
     } else {
       next(error);
     }

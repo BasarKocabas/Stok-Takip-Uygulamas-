@@ -38,7 +38,7 @@ export const Layout: React.FC = () => {
   const title = getPageTitle(location.pathname);
 
   return (
-    <div className="flex min-h-screen bg-slate-50 text-slate-900">
+    <div className="flex min-h-screen bg-background text-foreground">
       {/* Sidebar for desktop & mobile drawer */}
       <Sidebar mobileOpen={mobileMenuOpen} setMobileOpen={setMobileMenuOpen} />
       
@@ -53,7 +53,7 @@ export const Layout: React.FC = () => {
           <button
             type="button"
             onClick={() => setMobileMenuOpen(true)}
-            className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-800 text-slate-200 hover:bg-slate-700 active:scale-95"
+            className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-800 text-slate-200 hover:bg-slate-700 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
             title="Menüyü aç"
           >
             <Menu className="h-5 w-5" />
@@ -72,7 +72,7 @@ export const Layout: React.FC = () => {
         </main>
       </div>
       {/* Mobil alt tab bar */}
-      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-slate-800 bg-slate-900 md:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-slate-800 bg-slate-900 md:hidden" aria-label="Ana navigasyon">
         {[
           { path: '/', icon: House, label: 'Ana Sayfa' },
           { path: '/work-orders', icon: ClipboardList, label: 'İş Emirleri' },
@@ -84,13 +84,23 @@ export const Layout: React.FC = () => {
             to={path}
             end={path === '/'}
             className={({ isActive }) =>
-              `flex flex-col items-center gap-1 py-2 text-[11px] ${isActive ? 'text-blue-400' : 'text-slate-400'}`
+              `flex flex-col items-center gap-1 py-2 text-[11px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-400 ${isActive ? 'text-blue-400' : 'text-slate-400'}`
             }
           >
             <Icon className="h-5 w-5" />
             {label}
           </NavLink>
         ))}
+        <button
+          type="button"
+          onClick={() => setMobileMenuOpen(true)}
+          aria-label="Diğer menü seçeneklerini aç"
+          aria-expanded={mobileMenuOpen}
+          className="flex flex-col items-center gap-1 py-2 text-[11px] text-slate-400 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-400"
+        >
+          <Menu className="h-5 w-5" aria-hidden="true" />
+          Menü
+        </button>
       </nav>
     </div>
   );

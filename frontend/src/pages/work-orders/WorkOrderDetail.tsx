@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { workOrdersApi, reportsApi, productsApi, usersApi } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { PageHeader } from '@/components/shared/PageHeader';
-import { LoadingSpinner } from '@/components/shared/LoadingSpinner';
+import { LoadingSkeleton } from '@/components/shared/LoadingSkeleton';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { Button } from '@/components/ui/button';
@@ -20,6 +20,7 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { tr } from 'date-fns/locale';
 import { WORK_ORDER_STATUSES } from '@/lib/constants';
+import { formatCurrency } from '@/lib/formatters';
 
 const INTEGER_UNITS = ['adet', 'kutu', 'paket', 'takım'];
 
@@ -82,7 +83,7 @@ export default function WorkOrderDetail() {
     onError: (e: any) => { toast.error(e.response?.data?.error || 'Silinemedi'); setDeleteTarget(null); },
   });
 
-  if (isLoading) return <LoadingSpinner />;
+  if (isLoading) return <LoadingSkeleton variant="detail" />;
   if (!order) return <div>İş emri bulunamadı</div>;
 
   const isAdmin = user?.role === 'admin';
@@ -244,7 +245,7 @@ export default function WorkOrderDetail() {
                           <TableCell className="font-medium">{log.user_name || '-'}</TableCell>
                           <TableCell>{log.date ? format(new Date(log.date), 'dd MMM yyyy', { locale: tr }) : '-'}</TableCell>
                           <TableCell className="text-right">{log.hours_worked} sa</TableCell>
-                          <TableCell className="text-right">₺{Number(log.hourly_rate).toLocaleString('tr-TR')}</TableCell>
+                          <TableCell className="text-right">{formatCurrency(log.hourly_rate)}</TableCell>
                           <TableCell className="text-right">
                             {canWrite && (
                               <Button size="sm" variant="ghost" className="text-red-500 hover:bg-red-50"
@@ -283,7 +284,7 @@ export default function WorkOrderDetail() {
                           <TableCell className="font-medium">{eq.equipment_type}</TableCell>
                           <TableCell>{eq.specs || eq.description || '-'}</TableCell>
                           <TableCell>{eq.date ? format(new Date(eq.date), 'dd MMM yyyy', { locale: tr }) : '-'}</TableCell>
-                          <TableCell className="text-right">₺{Number(eq.rental_cost).toLocaleString('tr-TR')}</TableCell>
+                          <TableCell className="text-right">{formatCurrency(eq.rental_cost)}</TableCell>
                           <TableCell className="text-right">
                             {canWrite && (
                               <Button size="sm" variant="ghost" className="text-red-500 hover:bg-red-50"
@@ -304,10 +305,10 @@ export default function WorkOrderDetail() {
                 <TabsContent value="cost" className="m-0">
                   <h3 className="font-medium text-lg mb-4">Maliyet Özeti</h3>
                   <div className="space-y-4">
-                    <div className="flex justify-between py-2 border-b"><span>Malzeme Maliyeti</span><span className="font-medium">₺{costs?.material_cost?.toLocaleString('tr-TR') || 0}</span></div>
-                    <div className="flex justify-between py-2 border-b"><span>İşçilik Maliyeti</span><span className="font-medium">₺{costs?.labor_cost?.toLocaleString('tr-TR') || 0}</span></div>
-                    <div className="flex justify-between py-2 border-b"><span>Ekipman Maliyeti</span><span className="font-medium">₺{costs?.equipment_cost?.toLocaleString('tr-TR') || 0}</span></div>
-                    <div className="flex justify-between py-2 font-bold text-lg"><span>Toplam Maliyet</span><span>₺{costs?.total_cost?.toLocaleString('tr-TR') || 0}</span></div>
+                    <div className="flex justify-between py-2 border-b"><span>Malzeme Maliyeti</span><span className="font-medium">{formatCurrency(costs?.material_cost)}</span></div>
+                    <div className="flex justify-between py-2 border-b"><span>İşçilik Maliyeti</span><span className="font-medium">{formatCurrency(costs?.labor_cost)}</span></div>
+                    <div className="flex justify-between py-2 border-b"><span>Ekipman Maliyeti</span><span className="font-medium">{formatCurrency(costs?.equipment_cost)}</span></div>
+                    <div className="flex justify-between py-2 font-bold text-lg"><span>Toplam Maliyet</span><span>{formatCurrency(costs?.total_cost)}</span></div>
                   </div>
                 </TabsContent>
               </CardContent>

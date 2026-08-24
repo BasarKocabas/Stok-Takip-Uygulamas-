@@ -10,6 +10,7 @@ services:
     environment:
       - PORT=3001
       - NODE_ENV=production
+      - JWT_SECRET=your-secret-key-change-this
     restart: unless-stopped
 
   frontend:

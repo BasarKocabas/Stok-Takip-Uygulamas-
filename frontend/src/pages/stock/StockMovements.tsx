@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { stockApi, productsApi, workOrdersApi } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { PageHeader } from '@/components/shared/PageHeader';
-import { LoadingSpinner } from '@/components/shared/LoadingSpinner';
+import { LoadingSkeleton } from '@/components/shared/LoadingSkeleton';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -17,6 +17,7 @@ import { tr } from 'date-fns/locale';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 import { PaginationControls } from '@/components/shared/PaginationControls';
+import { Card } from '@/components/ui/card';
 
 const INTEGER_UNITS = ['adet', 'kutu', 'paket', 'takım'];
 
@@ -63,7 +64,7 @@ export default function StockMovements() {
     }
     try {
       await stockApi.create({ ...data, quantity: qty });
-      toast.success(data.movement_type === 'OUT' ? 'Çıkış talebi onaya gönderildi' : 'Giriş işlemi otomatik onaylandı');
+      toast.success('Hareket onaya gönderildi');
       setIsModalOpen(false);
       reset({ product_id: '', movement_type: 'IN', quantity: '', notes: '' });
       refetch();
@@ -107,9 +108,9 @@ export default function StockMovements() {
       </div>
 
       {isLoading ? (
-        <LoadingSpinner />
+        <LoadingSkeleton />
       ) : (
-        <div className="bg-white rounded-md border overflow-x-auto">
+        <Card className="overflow-x-auto rounded-md py-0">
           <Table>
             <TableHeader>
               <TableRow>
@@ -146,7 +147,7 @@ export default function StockMovements() {
                   <TableCell>{m.is_approved ? (m.approver_name || '-') : '-'}</TableCell>
                   {user?.role === 'admin' && (
                     <TableCell className="text-right">
-                      {!m.is_approved && m.movement_type === 'OUT' && (
+                      {!m.is_approved && (
                         <Button size="sm" onClick={() => handleApprove(m.id)}>Onayla</Button>
                       )}
                     </TableCell>
@@ -159,7 +160,7 @@ export default function StockMovements() {
             </TableBody>
           </Table>
           <PaginationControls pagination={movements?.pagination} onPageChange={setPage} />
-        </div>
+        </Card>
       )}
 
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>

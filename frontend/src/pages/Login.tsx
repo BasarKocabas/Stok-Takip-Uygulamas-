@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2 } from 'lucide-react';
-import { APP_NAME, APP_COMPANY } from '@/lib/constants';
+import { APP_NAME } from '@/lib/constants';
 
 const loginSchema = z.object({
   email: z.string().email('Geçerli bir e-posta adresi giriniz'),
@@ -43,18 +43,14 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-950 p-4 relative overflow-hidden">
-      {/* Background glowing effects */}
-      <div className="absolute -top-40 -left-40 h-80 w-80 rounded-full bg-blue-600/20 blur-3xl" />
-      <div className="absolute -bottom-40 -right-40 h-80 w-80 rounded-full bg-indigo-600/20 blur-3xl" />
-
-      <Card className="w-full max-w-md shadow-2xl border-slate-800 bg-slate-900/90 backdrop-blur-md text-white relative z-10">
-        <CardHeader className="text-center space-y-3 pb-4">
-          <div className="mx-auto rounded-xl bg-white p-3 shadow-md w-48 flex items-center justify-center">
+    <div className="min-h-screen flex items-center justify-center bg-slate-950 p-4">
+      <Card className="w-full max-w-md border-slate-800 bg-slate-900 text-white shadow-2xl">
+        <CardHeader className="text-center space-y-1 pb-4">
+          <div className="mx-auto w-64 flex items-center justify-center">
             <img 
-              src="/ansava-logo-01.png" 
-              alt={APP_COMPANY}
-              className="h-10 w-full object-contain"
+              src="/izbeton-logo.png"
+              alt="İzbeton"
+              className="h-20 w-full object-contain"
               onError={(e: any) => { e.currentTarget.style.display = 'none'; }}
             />
           </div>
@@ -80,7 +76,7 @@ export default function Login() {
               <Input
                 id="email"
                 type="email"
-                placeholder="ornek@ansava.com"
+                placeholder="ornek@izbeton.com.tr"
                 {...register('email')}
                 className={errors.email ? 'border-red-500' : ''}
               />

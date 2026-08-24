@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tansta
 import { workOrdersApi } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { PageHeader } from '@/components/shared/PageHeader';
-import { LoadingSpinner } from '@/components/shared/LoadingSpinner';
+import { LoadingSkeleton } from '@/components/shared/LoadingSkeleton';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { PaginationControls } from '@/components/shared/PaginationControls';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
@@ -17,6 +17,7 @@ import { format } from 'date-fns';
 import { tr } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { WORK_ORDER_STATUSES, CLIENT_TYPES } from '@/lib/constants';
+import { Card } from '@/components/ui/card';
 
 export default function WorkOrderList() {
   const navigate = useNavigate();
@@ -124,9 +125,9 @@ export default function WorkOrderList() {
       </div>
 
       {isLoading ? (
-        <LoadingSpinner />
+        <LoadingSkeleton />
       ) : (
-        <div className="bg-white rounded-md border overflow-x-auto">
+        <Card className="overflow-x-auto rounded-md py-0">
           <Table>
             <TableHeader>
               <TableRow>
@@ -174,7 +175,7 @@ export default function WorkOrderList() {
             </TableBody>
           </Table>
           <PaginationControls pagination={workOrders?.pagination} onPageChange={setPage} />
-        </div>
+        </Card>
       )}
 
       <ConfirmDialog 

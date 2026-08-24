@@ -2,13 +2,14 @@ import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { reportsApi } from '@/lib/api';
 import { PageHeader } from '@/components/shared/PageHeader';
-import { LoadingSpinner } from '@/components/shared/LoadingSpinner';
+import { LoadingSkeleton } from '@/components/shared/LoadingSkeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { CLIENT_TYPES } from '@/lib/constants';
+import { formatCurrency } from '@/lib/formatters';
 
 function BarChart({ rows, money }: { rows: { label: string; value: number }[]; money?: boolean }) {
   const max = Math.max(...rows.map(r => r.value), 1);
@@ -21,7 +22,7 @@ function BarChart({ rows, money }: { rows: { label: string; value: number }[]; m
             <div className="h-full rounded bg-blue-500" style={{ width: `${(r.value / max) * 100}%` }} />
           </div>
           <span className="w-24 text-right font-mono text-slate-700 dark:text-slate-200">
-            {money ? `₺${r.value.toLocaleString('tr-TR')}` : r.value}
+            {money ? formatCurrency(r.value) : r.value}
           </span>
         </div>
       ))}
@@ -102,7 +103,7 @@ export default function Reports() {
               <BarChart rows={inRows} />
               <h4 className="text-sm font-medium mt-6">Çıkış (Tüketim) Dağılımı</h4>
               <BarChart rows={outRows} />
-              {isStockLoading ? <LoadingSpinner /> : (
+              {isStockLoading ? <LoadingSkeleton /> : (
                 <Table className="mt-8">
                   <TableHeader>
                     <TableRow>
@@ -143,7 +144,7 @@ export default function Reports() {
               <h3 className="text-lg font-medium mb-4">Kurum Bazlı İş Emri ve Maliyet Dağılımı</h3>
               <BarChart money rows={(Array.isArray(clientReport) ? clientReport : [])
                 .map(r => ({ label: CLIENT_TYPES[r.client_type] ?? r.client_type, value: Number(r.total_cost || 0) }))} />
-              {isClientLoading ? <LoadingSpinner /> : (
+              {isClientLoading ? <LoadingSkeleton /> : (
                 <Table className="mt-8">
                   <TableHeader>
                     <TableRow>
@@ -158,7 +159,7 @@ export default function Reports() {
                         <TableCell className="font-medium">{CLIENT_TYPES[row.client_type] ?? row.client_type}</TableCell>
                         <TableCell className="text-right font-mono font-medium">{row.order_count}</TableCell>
                         <TableCell className="text-right font-mono font-bold text-slate-900">
-                          ₺{Number(row.total_cost || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          {formatCurrency(row.total_cost, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </TableCell>
                       </TableRow>
                     ))}

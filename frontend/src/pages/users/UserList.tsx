@@ -6,7 +6,7 @@ import * as z from 'zod';
 import { usersApi, authApi } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { PageHeader } from '@/components/shared/PageHeader';
-import { LoadingSpinner } from '@/components/shared/LoadingSpinner';
+import { LoadingSkeleton } from '@/components/shared/LoadingSkeleton';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,6 +19,7 @@ import { Plus, Trash2, Loader2, Edit } from 'lucide-react';
 import { toast } from 'sonner';
 import { USER_ROLES } from '@/lib/constants';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
+import { Card } from '@/components/ui/card';
 
 const userCreateSchema = z.object({
   name: z.string().min(2, 'Ad en az 2 karakter olmalıdır'),
@@ -116,7 +117,7 @@ export default function UserList() {
     createMutation.mutate(data);
   };
 
-  if (isLoading) return <LoadingSpinner />;
+  if (isLoading) return <LoadingSkeleton />;
 
   return (
     <div className="space-y-6">
@@ -131,7 +132,7 @@ export default function UserList() {
         }
       />
 
-      <div className="bg-white rounded-md border overflow-x-auto">
+      <Card className="overflow-x-auto rounded-md py-0">
         <Table>
           <TableHeader>
             <TableRow>
@@ -194,7 +195,7 @@ export default function UserList() {
             )}
           </TableBody>
         </Table>
-      </div>
+      </Card>
 
       {/* User Delete Confirmation Dialog */}
       <ConfirmDialog

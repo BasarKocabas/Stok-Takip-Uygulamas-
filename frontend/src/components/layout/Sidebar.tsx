@@ -56,7 +56,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
             onClick={() => setMobileOpen(false)}
             className={({ isActive }) =>
               cn(
-                'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
+                'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900',
                 isActive
                   ? 'bg-blue-600 text-white shadow shadow-blue-600/30'
                   : 'text-slate-300 hover:bg-slate-800 hover:text-white'
@@ -83,14 +83,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
         <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true">
           <div className="fixed inset-0 bg-black/60 backdrop-blur-xs" onClick={() => setMobileOpen(false)} />
           <aside className="fixed inset-y-0 left-0 flex w-72 flex-col bg-slate-900 text-white shadow-2xl">
-            <div className="mb-4 flex items-center justify-between px-4 pt-5">
-              <div className="flex items-center gap-2 pl-1 text-white">
-                <img src="/ansava.png" alt={APP_NAME} className="h-6 w-6 shrink-0 object-contain" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
-                <span className="font-display text-lg font-bold tracking-[0.14em]">{APP_NAME}</span>
+            <div className="mb-0 flex items-center justify-between px-4 pt-5">
+              <div className="flex items-center gap-3 pl-1 text-white">
+                <img src="/ansava.png" alt={APP_NAME} className="h-8 w-8 shrink-0 object-contain" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                <span className="font-display text-xl font-bold tracking-[0.14em]">{APP_NAME}</span>
               </div>
               <button
                 type="button"
-                className="flex shrink-0 items-center justify-center rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white"
+                className="flex shrink-0 items-center justify-center rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
                 onClick={() => setMobileOpen(false)}
               >
                 <X className="h-5 w-5" />
@@ -98,11 +98,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
             </div>
 
             <div className="mb-6 px-4">
-              <div className="brand-logo-card rounded-xl bg-white shadow py-2 px-3 flex items-center justify-center">
+              <div className="flex items-center justify-start pl-1 -mt-3">
                 <img 
-                  src="/ansava-logo-01.png" 
-                  alt={APP_COMPANY}
-                  className="h-auto w-full max-h-14 object-contain"
+                  src="/izbeton-logo.png"
+                  alt="İzbeton"
+                  className="h-14 w-auto object-left object-contain"
                   onError={(e) => { e.currentTarget.style.display = 'none'; }}
                 />
               </div>
@@ -123,7 +123,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
                   </div>
                   <button
                     onClick={logout}
-                    className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-slate-400 hover:bg-slate-700 hover:text-white"
+                    className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-slate-400 hover:bg-slate-700 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
                   >
                     <LogOut className="h-3.5 w-3.5" /> Çıkış
                   </button>
@@ -138,19 +138,19 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
       {/* Desktop Sticky Sidebar */}
       <aside 
         className={cn(
-          "hidden md:flex md:sticky md:top-0 md:h-screen flex-col bg-slate-900 text-white transition-[width] duration-200 ease-in-out border-r border-slate-800 py-5",
+          "hidden md:flex md:sticky md:top-0 md:h-screen flex-col bg-slate-900 text-white transition-[width] duration-200 ease-in-out border-r border-slate-800 py-5 shadow-[4px_0_24px_-8px_rgba(0,0,0,0.25)] motion-reduce:transition-none",
           collapsed ? "w-20" : "w-64"
         )}
       >
         {/* Top Header */}
-        <div className="mb-4 flex items-center justify-between px-3">
-          <div className="flex items-center gap-2 pl-1 text-white">
-            <img src="/ansava.png" alt={APP_NAME} className="h-6 w-6 shrink-0 object-contain" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
-            {!collapsed && <span className="font-display text-lg font-bold tracking-[0.14em]">{APP_NAME}</span>}
+        <div className="mb-0 flex items-center justify-between px-3">
+          <div className="flex items-center gap-3 pl-1 text-white">
+            <img src="/ansava.png" alt={APP_NAME} className="h-8 w-8 shrink-0 object-contain" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+            {!collapsed && <span className="font-display text-xl font-bold tracking-[0.14em]">{APP_NAME}</span>}
           </div>
           <button
             onClick={() => setCollapsed(!collapsed)}
-            className="flex shrink-0 items-center justify-center rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-800 hover:text-white"
+            className="flex shrink-0 items-center justify-center rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-800 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
             title={collapsed ? "Menüyü genişlet" : "Menüyü daralt"}
           >
             {collapsed ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
@@ -160,11 +160,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
         {/* Brand Logo Card */}
         {!collapsed && (
           <div className="mb-8 px-4">
-            <div className="brand-logo-card rounded-xl bg-white shadow py-2.5 px-3 flex items-center justify-center">
+            <div className="flex items-center justify-start pl-1 -mt-4">
               <img 
-                src="/ansava-logo-01.png" 
-                alt="Ansava Mühendislik" 
-                className="h-auto w-full max-h-16 object-contain" 
+                src="/izbeton-logo.png"
+                alt="İzbeton"
+                className="h-20 w-auto object-left object-contain"
                 onError={(e) => { e.currentTarget.style.display = 'none'; }}
               />
             </div>
@@ -189,7 +189,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
                 </div>
                 <button
                   onClick={logout}
-                  className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-slate-400 transition-colors hover:bg-slate-700 hover:text-white"
+                  className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-slate-400 transition-colors hover:bg-slate-700 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
                   title="Çıkış yap"
                 >
                   <LogOut className="h-3.5 w-3.5" /> Çıkış
@@ -202,7 +202,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
                   {user?.role ? USER_ROLES[user.role] : 'Personel'}
                 </span>
                 <div className="flex gap-2 items-center">
-                  <button onClick={toggle} title="Temayı Değiştir" className="text-sm">
+                  <button onClick={toggle} title="Temayı Değiştir" className="rounded text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400">
                     {theme === 'dark' ? '☀️' : '🌙'}
                   </button>
                   <span className="text-slate-500">v1.0.0</span>
@@ -213,7 +213,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
             <div className="flex flex-col items-center gap-2">
               <button
                 onClick={logout}
-                className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white"
+                className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
                 title="Çıkış yap"
               >
                 <LogOut className="h-4 w-4" />

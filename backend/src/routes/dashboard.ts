@@ -24,7 +24,7 @@ router.get('/summary', async (req: AuthRequest, res: Response, next: NextFunctio
 
     const [{ open_work_orders }] = await db('work_orders').where({ is_active: true }).whereIn('status', ['draft', 'open', 'in_progress']).count('* as open_work_orders');
     const [{ critical_stock_count }] = await db('products').where({ is_active: true }).whereRaw('current_stock < min_stock_level').count('* as critical_stock_count');
-    const [{ pending_approvals }] = await db('stock_movements').where({ movement_type: 'OUT', is_approved: false }).count('* as pending_approvals');
+    const [{ pending_approvals }] = await db('stock_movements').where({ is_approved: false }).count('* as pending_approvals');
 
     res.json({
       total_products: Number(total_products),

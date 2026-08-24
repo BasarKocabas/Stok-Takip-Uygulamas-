@@ -3,6 +3,12 @@ import { v4 as uuidv4 } from 'uuid';
 import bcrypt from 'bcryptjs';
 
 export async function seed(knex: Knex): Promise<void> {
+  const usersCount = await knex('users').count('* as count').first();
+  if (usersCount && Number(usersCount.count) > 0) {
+    console.log('Database already seeded, skipping...');
+    return;
+  }
+
   // Deletes ALL existing entries
   await knex('equipment_logs').del();
   await knex('labor_logs').del();
