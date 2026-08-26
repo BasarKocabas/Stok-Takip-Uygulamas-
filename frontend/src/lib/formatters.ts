@@ -9,3 +9,8 @@ export function formatCurrency(value: number | string | null | undefined, option
     ...options,
   }).format(Number.isFinite(numericValue) ? numericValue : 0);
 }
+
+export function formatDate(dateStr: string | Date | null | undefined) {
+  if (!dateStr) return '-';
+  return new Date(dateStr).toLocaleDateString('tr-TR');
+}

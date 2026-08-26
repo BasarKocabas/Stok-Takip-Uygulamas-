@@ -96,6 +96,18 @@ router.post('/:id/approve', requireAdmin, async (req: AuthRequest, res: Response
         if (product.current_stock < movement.quantity) {
           throw new Error('Yetersiz stok');
         }
+        if (movement.work_order_id) {
+          const item = await trx('work_order_items')
+            .where({ work_order_id: movement.work_order_id, product_id: movement.product_id })
+            .first();
+          if (item) {
+            const cap = item.approved_quantity ?? item.requested_quantity;
+            const newUsed = Number(item.used_quantity) + Number(movement.quantity);
+            if (newUsed > Number(cap)) {
+              throw new Error('Onaylanan miktar aşılıyor');
+            }
+          }
+        }
         await trx('products').where({ id: movement.product_id }).decrement('current_stock', movement.quantity);
         if (movement.work_order_id) {
           await trx('work_order_items')
@@ -118,6 +130,8 @@ router.post('/:id/approve', requireAdmin, async (req: AuthRequest, res: Response
   } catch (error: any) {
     if (error.message === 'Yetersiz stok') {
       res.status(400).json({ error: 'Onaylamak için yetersiz stok. İşlem reddedildi.' });
+    } else if (error.message === 'Onaylanan miktar aşılıyor') {
+      res.status(400).json({ error: 'Bu hareket onaylanırsa kullanılan miktar, onaylanan miktarı aşacak. İşlem reddedildi.' });
     } else if (error.message === 'Ürün bulunamadı' || error.message === 'Geçersiz işlem') {
       res.status(400).json({ error: error.message });
     } else {

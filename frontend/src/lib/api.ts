@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { User, Product, ProductCostHistory, WorkOrder, StockMovement, DashboardSummary, AuthResponse, LoginInput, PaginatedResponse } from './types';
+import type { User, Product, ProductCostHistory, WorkOrder, StockMovement, DashboardSummary, AuthResponse, LoginInput, PaginatedResponse, Equipment, EquipmentAssignment } from './types';
 
 const api = axios.create({ baseURL: '/api' });
 
@@ -45,6 +45,8 @@ export const productsApi = {
   delete: (id: string) => api.delete<{ success: boolean }>(`/products/${id}`).then(r => r.data),
   addCost: (id: string, data: { unit_cost: number; effective_date: string; notes?: string }) => 
     api.post(`/products/${id}/cost`, data).then(r => r.data),
+  updateCost: (id: string, costId: string, data: { unit_cost: number; effective_date: string; notes?: string }) =>
+    api.put(`/products/${id}/costs/${costId}`, data).then(r => r.data),
   criticalStock: () => api.get<Product[]>('/products/alerts/critical-stock').then(r => r.data),
 };
 
@@ -53,7 +55,7 @@ export const workOrdersApi = {
   list: (params?: { search?: string; status?: string; approval_status?: 'pending' | 'approved' | 'rejected'; client_type?: string; page?: number; limit?: number }) => 
     api.get<PaginatedResponse<WorkOrder>>('/work-orders', { params }).then(r => r.data),
   get: (id: string) => api.get<WorkOrder>(`/work-orders/${id}`).then(r => r.data),
-  create: (data: { title: string; description?: string; client_type: string; assigned_to?: string }) => 
+  create: (data: { title: string; description?: string; client_type: string; assigned_to?: string; external_ref?: string }) => 
     api.post<WorkOrder>('/work-orders', data).then(r => r.data),
   update: (id: string, data: Partial<WorkOrder>) => api.put<{ success: boolean }>(`/work-orders/${id}`, data).then(r => r.data),
   delete: (id: string) => api.delete<{ success: boolean }>(`/work-orders/${id}`).then(r => r.data),
@@ -73,6 +75,12 @@ export const workOrdersApi = {
     api.delete<{ success: boolean }>(`/work-orders/${id}/labor/${logId}`).then(r => r.data),
   deleteEquipment: (id: string, logId: string) =>
     api.delete<{ success: boolean }>(`/work-orders/${id}/equipment/${logId}`).then(r => r.data),
+  addEquipmentAssignment: (id: string, data: { equipment_id: string; start_date: string; end_date?: string; supplier_name?: string; rate_unit: string; quantity_units?: number; cost: number; notes?: string }) =>
+    api.post<{ success: boolean }>(`/work-orders/${id}/equipment-assignments`, data).then(r => r.data),
+  updateEquipmentAssignment: (id: string, assignmentId: string, data: { end_date?: string; supplier_name?: string; rate_unit?: string; quantity_units?: number; cost?: number; notes?: string }) =>
+    api.put<{ success: boolean }>(`/work-orders/${id}/equipment-assignments/${assignmentId}`, data).then(r => r.data),
+  deleteEquipmentAssignment: (id: string, assignmentId: string) =>
+    api.delete<{ success: boolean }>(`/work-orders/${id}/equipment-assignments/${assignmentId}`).then(r => r.data),
 };
 
 // Stock Movements
@@ -83,7 +91,7 @@ export const stockApi = {
       params: { ...rest, movement_type: movement_type ?? type },
     }).then(r => r.data);
   },
-  create: (data: { product_id: string; movement_type?: 'IN' | 'OUT'; type?: 'IN' | 'OUT'; quantity: number; notes?: string; work_order_id?: string }) => 
+  create: (data: { product_id: string; movement_type?: 'IN' | 'OUT'; type?: 'IN' | 'OUT'; quantity: number; notes?: string; work_order_id?: string; supplier_name?: string; invoice_no?: string }) => 
     api.post<{ success: boolean; message: string }>('/stock-movements', {
       ...data,
       movement_type: data.movement_type || data.type || 'IN',
@@ -113,6 +121,17 @@ export const reportsApi = {
   workOrderCosts: (id: string) => api.get(`/reports/work-order-costs/${id}`).then(r => r.data),
   costByClient: (params?: { start_date?: string; end_date?: string }) => 
     api.get('/reports/cost-by-client', { params }).then(r => r.data),
+};
+
+// Equipment
+export const equipmentApi = {
+  list: (params?: { search?: string; status?: string; ownership?: string; page?: number; limit?: number }) =>
+    api.get<PaginatedResponse<Equipment>>('/equipment', { params }).then(r => r.data),
+  mini: () => api.get<Equipment[]>('/equipment/mini').then(r => r.data),
+  get: (id: string) => api.get<Equipment & { assignments: EquipmentAssignment[]; total_cost: number }>(`/equipment/${id}`).then(r => r.data),
+  create: (data: Partial<Equipment>) => api.post<Equipment>('/equipment', data).then(r => r.data),
+  update: (id: string, data: Partial<Equipment>) => api.put<{ success: boolean }>(`/equipment/${id}`, data).then(r => r.data),
+  delete: (id: string) => api.delete<{ success: boolean }>(`/equipment/${id}`).then(r => r.data),
 };
 
 export default api;

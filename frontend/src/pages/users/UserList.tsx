@@ -161,9 +161,9 @@ export default function UserList() {
                 </TableCell>
                 <TableCell>
                   {u.is_active ? (
-                    <Badge variant="outline" className="text-green-600 bg-green-50">Aktif</Badge>
+                    <Badge variant="outline" className="text-green-600 bg-green-50 dark:bg-green-500/15 dark:text-green-300">Aktif</Badge>
                   ) : (
-                    <Badge variant="outline" className="text-gray-500 bg-gray-50">Pasif</Badge>
+                    <Badge variant="outline" className="text-gray-500 bg-gray-50 dark:bg-white/10 dark:text-slate-200">Pasif</Badge>
                   )}
                 </TableCell>
                 {isAdmin && (

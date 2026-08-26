@@ -139,4 +139,22 @@ router.post('/:id/cost', requireAdmin, validateRequest(productCostSchema), async
   }
 });
 
+router.put('/:id/costs/:costId', requireAdmin, validateRequest(productCostSchema), async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const latest = await db('product_cost_history')
+      .where({ product_id: req.params.id })
+      .orderBy('effective_date', 'desc')
+      .orderBy('created_at', 'desc')
+      .first();
+    if (!latest || latest.id !== req.params.costId) {
+      res.status(400).json({ error: 'Sadece en güncel maliyet kaydı düzenlenebilir' });
+      return;
+    }
+    await db('product_cost_history').where({ id: req.params.costId }).update(req.body);
+    res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
 export default router;

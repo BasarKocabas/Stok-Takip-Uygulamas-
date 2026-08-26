@@ -42,7 +42,7 @@ export default function StockMovements() {
   });
 
   const { register, handleSubmit, setValue, watch, reset, formState: { isSubmitting } } = useForm({
-    defaultValues: { product_id: '', movement_type: 'IN', quantity: '', notes: '' },
+    defaultValues: { product_id: '', movement_type: 'IN', quantity: '', notes: '', work_order_id: '', supplier_name: '', invoice_no: '' },
   });
 
   const selectedProductId = watch('product_id');
@@ -66,7 +66,7 @@ export default function StockMovements() {
       await stockApi.create({ ...data, quantity: qty });
       toast.success('Hareket onaya gönderildi');
       setIsModalOpen(false);
-      reset({ product_id: '', movement_type: 'IN', quantity: '', notes: '' });
+      reset({ product_id: '', movement_type: 'IN', quantity: '', notes: '', work_order_id: '', supplier_name: '', invoice_no: '' });
       refetch();
       queryClient.invalidateQueries({ queryKey: ['dashboardSummary'] });
     } catch (e: any) {
@@ -138,11 +138,7 @@ export default function StockMovements() {
                   <TableCell className="text-right font-bold">{m.quantity} {m.product_unit || ''}</TableCell>
                   <TableCell>{m.creator_name || '-'}</TableCell>
                   <TableCell>
-                    {m.is_approved ? (
-                      <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">Onaylandı</span>
-                    ) : (
-                      <span className="text-xs bg-amber-100 text-amber-800 px-2 py-1 rounded">Beklemede</span>
-                    )}
+                    <StatusBadge status={m.is_approved ? 'approved' : 'pending'} type="approval" />
                   </TableCell>
                   <TableCell>{m.is_approved ? (m.approver_name || '-') : '-'}</TableCell>
                   {user?.role === 'admin' && (
@@ -212,6 +208,34 @@ export default function StockMovements() {
                   Talep mevcut stoğu aşıyor — admin onayında "Yetersiz stok" kontrolü uygulanacak.
                 </p>
               )}
+            <div className="grid gap-2">
+              <Label>İş Emri (Opsiyonel)</Label>
+              <Select value={watch('work_order_id') || ''} onValueChange={(v) => setValue('work_order_id', v === 'none' ? '' : (v || ''))}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="İş Emri Seçin" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Seçilmedi</SelectItem>
+                  {(workOrders?.data || []).map((wo: any) => (
+                    <SelectItem key={wo.id} value={wo.id}>{wo.order_no} - {wo.title}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {selectedMovType === 'IN' && (
+              <>
+                <div className="grid gap-2">
+                  <Label>Tedarikçi</Label>
+                  <Input {...register('supplier_name')} placeholder="Opsiyonel" />
+                </div>
+                <div className="grid gap-2">
+                  <Label>İrsaliye / Fatura No</Label>
+                  <Input {...register('invoice_no')} placeholder="Opsiyonel" />
+                </div>
+              </>
+            )}
+
             <div className="grid gap-2">
               <Label>Not</Label>
               <Input {...register('notes')} />

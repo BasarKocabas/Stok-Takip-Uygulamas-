@@ -43,6 +43,7 @@ export interface WorkOrder {
   assigned_to?: string;
   approved_by?: string;
   approved_at?: string | Date;
+  external_ref?: string;
   is_active: boolean;
   created_at: string | Date;
   updated_at: string | Date;
@@ -68,6 +69,8 @@ export interface StockMovement {
   approved_by?: string;
   approved_at?: string | Date;
   notes?: string;
+  supplier_name?: string;
+  invoice_no?: string;
   created_by: string;
   created_at: string | Date;
 }
@@ -92,5 +95,36 @@ export interface EquipmentLog {
   rental_cost: number;
   date: string | Date;
   notes?: string;
+  created_at: string | Date;
+}
+
+export interface Equipment {
+  id: string;
+  name: string;
+  equipment_type: string;
+  ownership: 'owned' | 'rented';
+  status: 'available' | 'in_use' | 'maintenance';
+  specs?: string;
+  serial_or_plate_no?: string;
+  default_supplier_name?: string;
+  default_rate_unit?: 'hourly' | 'daily' | 'fixed';
+  default_rate_cost?: number;
+  is_active: boolean;
+  created_at: string | Date;
+  updated_at: string | Date;
+}
+
+export interface EquipmentAssignment {
+  id: string;
+  equipment_id: string;
+  work_order_id: string;
+  start_date: string | Date;
+  end_date?: string | Date;
+  supplier_name?: string;
+  rate_unit: 'hourly' | 'daily' | 'fixed';
+  quantity_units?: number;
+  cost: number;
+  notes?: string;
+  created_by: string;
   created_at: string | Date;
 }

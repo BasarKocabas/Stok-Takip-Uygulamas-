@@ -59,6 +59,7 @@ export const workOrderSchema = z.object({
   description: z.string().optional(),
   client_type: z.enum(['izban', 'belediye', 'kurum_ici', 'diger']),
   assigned_to: z.string().uuid().optional(),
+  external_ref: z.string().max(100).optional(),
 });
 
 export const workOrderUpdateSchema = z.object({
@@ -67,6 +68,7 @@ export const workOrderUpdateSchema = z.object({
   client_type: z.enum(['izban', 'belediye', 'kurum_ici', 'diger']).optional(),
   status: z.enum(['draft', 'open', 'in_progress', 'completed', 'cancelled']).optional(),
   assigned_to: z.string().uuid().nullable().optional(),
+  external_ref: z.string().max(100).nullable().optional(),
 });
 
 export const workOrderItemSchema = z.object({
@@ -85,6 +87,8 @@ export const stockMovementSchema = z.object({
   movement_type: z.enum(['IN', 'OUT']),
   quantity: z.number().positive(),
   notes: z.string().optional(),
+  supplier_name: z.string().max(200).optional(),
+  invoice_no: z.string().max(100).optional(),
 });
 
 export const laborLogSchema = z.object({
@@ -102,4 +106,51 @@ export const equipmentLogSchema = z.object({
   rental_cost: z.number().min(0),
   date: z.string().datetime().or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)),
   notes: z.string().optional(),
+});
+
+// ──── Equipment Catalog ────
+export const equipmentSchema = z.object({
+  name: z.string().min(1),
+  equipment_type: z.string().min(1),
+  ownership: z.enum(['owned', 'rented']).optional(),
+  status: z.enum(['available', 'in_use', 'maintenance']).optional(),
+  specs: z.string().optional(),
+  serial_or_plate_no: z.string().optional(),
+  default_supplier_name: z.string().optional(),
+  default_rate_unit: z.enum(['hourly', 'daily', 'fixed']).optional(),
+  default_rate_cost: z.number().min(0).optional(),
+});
+
+export const equipmentUpdateSchema = z.object({
+  name: z.string().min(1).optional(),
+  equipment_type: z.string().min(1).optional(),
+  ownership: z.enum(['owned', 'rented']).optional(),
+  status: z.enum(['available', 'in_use', 'maintenance']).optional(),
+  specs: z.string().nullable().optional(),
+  serial_or_plate_no: z.string().nullable().optional(),
+  default_supplier_name: z.string().nullable().optional(),
+  default_rate_unit: z.enum(['hourly', 'daily', 'fixed']).nullable().optional(),
+  default_rate_cost: z.number().min(0).nullable().optional(),
+  is_active: z.boolean().optional(),
+});
+
+// ──── Equipment Assignment (work order scoped) ────
+export const equipmentAssignmentSchema = z.object({
+  equipment_id: z.string().uuid(),
+  start_date: z.string().datetime().or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)),
+  end_date: z.string().datetime().or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).optional(),
+  supplier_name: z.string().optional(),
+  rate_unit: z.enum(['hourly', 'daily', 'fixed']),
+  quantity_units: z.number().min(0).optional(),
+  cost: z.number().min(0),
+  notes: z.string().optional(),
+});
+
+export const equipmentAssignmentUpdateSchema = z.object({
+  end_date: z.string().datetime().or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).optional(),
+  supplier_name: z.string().nullable().optional(),
+  rate_unit: z.enum(['hourly', 'daily', 'fixed']).optional(),
+  quantity_units: z.number().min(0).nullable().optional(),
+  cost: z.number().min(0).optional(),
+  notes: z.string().nullable().optional(),
 });

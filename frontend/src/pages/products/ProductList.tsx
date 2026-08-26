@@ -82,7 +82,7 @@ export default function ProductList() {
                         <p className="font-semibold text-base">{product.name}</p>
                         <p className="text-sm text-muted-foreground font-mono">{product.code}</p>
                       </div>
-                      <Badge variant="outline" className={product.is_active ? 'bg-green-50 text-green-700' : ''}>
+                      <Badge variant="outline" className={product.is_active ? 'bg-green-50 text-green-700 dark:bg-green-500/15 dark:text-green-300' : 'dark:bg-white/10 dark:text-slate-200'}>
                         {product.is_active ? 'Aktif' : 'Pasif'}
                       </Badge>
                     </div>
@@ -136,9 +136,9 @@ export default function ProductList() {
                       <TableCell className="text-right">{product.min_stock_level}</TableCell>
                       <TableCell>
                         {product.is_active ? (
-                          <Badge variant="outline" className="bg-green-50 text-green-700">Aktif</Badge>
+                          <Badge variant="outline" className="bg-green-50 text-green-700 dark:bg-green-500/15 dark:text-green-300">Aktif</Badge>
                         ) : (
-                          <Badge variant="outline">Pasif</Badge>
+                          <Badge variant="outline" className="dark:bg-white/10 dark:text-slate-200">Pasif</Badge>
                         )}
                       </TableCell>
                     </TableRow>

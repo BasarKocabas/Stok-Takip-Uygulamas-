@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { reportsApi } from '@/lib/api';
 import { PageHeader } from '@/components/shared/PageHeader';
+import { StatusBadge } from '@/components/shared/StatusBadge';
 import { LoadingSkeleton } from '@/components/shared/LoadingSkeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent } from '@/components/ui/card';
@@ -88,6 +89,7 @@ export default function Reports() {
           <Button variant="outline" size="sm" onClick={() => preset(1)}>Günlük</Button>
           <Button variant="outline" size="sm" onClick={() => preset(7)}>Haftalık</Button>
           <Button variant="outline" size="sm" onClick={() => preset(30)}>Aylık</Button>
+          <Button variant="outline" size="sm" onClick={() => preset(365)}>Yıllık</Button>
           <Button variant="outline" size="sm" onClick={() => { setStart(''); setEnd(''); }}>Tümü</Button>
           <div className="ml-auto flex gap-2">
             <Button variant="outline" size="sm" onClick={() => exportCsv(stockReport || [], 'stok-raporu')}>Stok CSV</Button>
@@ -119,11 +121,7 @@ export default function Reports() {
                         <TableCell className="font-mono">{row.code}</TableCell>
                         <TableCell className="font-medium">{row.name}</TableCell>
                         <TableCell>
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${
-                            row.movement_type === 'IN' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'
-                          }`}>
-                            {row.movement_type === 'IN' ? 'Giriş' : 'Çıkış'}
-                          </span>
+                          <StatusBadge status={row.movement_type} type="movement" />
                         </TableCell>
                         <TableCell className="text-right font-bold">{row.total_quantity}</TableCell>
                       </TableRow>

@@ -40,10 +40,10 @@ router.get('/work-order-costs/:id', async (req: AuthRequest, res: Response, next
     const materialCost = Number(matResult?.material_cost || 0);
 
     const labor = await db('labor_logs').where({ work_order_id: req.params.id });
-    const equipment = await db('equipment_logs').where({ work_order_id: req.params.id });
+    const equipment = await db('equipment_assignments').where({ work_order_id: req.params.id });
 
     const laborCost = labor.reduce((sum, log) => sum + (log.hours_worked * log.hourly_rate), 0);
-    const equipmentCost = equipment.reduce((sum, log) => sum + log.rental_cost, 0);
+    const equipmentCost = equipment.reduce((sum, log) => sum + Number(log.cost || 0), 0);
 
     res.json({
       work_order_id: req.params.id,
@@ -92,8 +92,8 @@ router.get('/cost-by-client', async (req: AuthRequest, res: Response, next: Next
         FROM labor_logs GROUP BY work_order_id
       ) lab ON lab.work_order_id = wo.id
       LEFT JOIN (
-        SELECT work_order_id, SUM(rental_cost) AS equipment_cost
-        FROM equipment_logs GROUP BY work_order_id
+        SELECT work_order_id, SUM(cost) AS equipment_cost
+        FROM equipment_assignments GROUP BY work_order_id
       ) eq ON eq.work_order_id = wo.id
       WHERE wo.is_active = 1 ${dateClause}
       GROUP BY wo.client_type

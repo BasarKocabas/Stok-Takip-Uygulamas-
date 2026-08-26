@@ -8,7 +8,7 @@ interface StatusBadgeProps {
 }
 
 export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, type }) => {
-  let colorClass = 'bg-gray-100 text-gray-800';
+  let colorClass = 'bg-gray-100 text-gray-800 dark:bg-white/10 dark:text-slate-200';
   let label = status;
 
   if (type === 'workOrder') {

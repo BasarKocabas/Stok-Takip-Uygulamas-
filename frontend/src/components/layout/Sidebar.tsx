@@ -12,7 +12,8 @@ import {
   PanelLeftOpen, 
   CircleUserRound, 
   Settings,
-  X 
+  X,
+  Wrench
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { USER_ROLES, APP_NAME, APP_COMPANY } from '../../lib/constants';
@@ -29,6 +30,7 @@ const navItems = [
   { name: 'İş Emirleri', path: '/work-orders', icon: ClipboardList },
   { name: 'Malzeme Takip', path: '/products', icon: PackageSearch },
   { name: 'Stok Hareketleri', path: '/stock-movements', icon: ArrowLeftRight },
+  { name: 'Ekipmanlar', path: '/equipment', icon: Wrench },
   { name: 'Personel', path: '/users', icon: Users, role: ['admin', 'manager'] },
   { name: 'İstatistikler & Raporlar', path: '/reports', icon: ChartColumn, role: ['admin', 'manager'] },
   { name: 'Profil', path: '/profile', icon: CircleUserRound },

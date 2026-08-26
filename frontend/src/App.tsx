@@ -14,6 +14,8 @@ import WorkOrderDetail from '@/pages/work-orders/WorkOrderDetail';
 import StockMovements from '@/pages/stock/StockMovements';
 import UserList from '@/pages/users/UserList';
 import Reports from '@/pages/reports/Reports';
+import EquipmentList from '@/pages/equipment/EquipmentList';
+import EquipmentDetail from '@/pages/equipment/EquipmentDetail';
 
 import { ThemeProvider } from '@/context/ThemeContext';
 import Profile from '@/pages/Profile';
@@ -46,6 +48,8 @@ function App() {
                   <Route path="/work-orders/new" element={<WorkOrderForm />} />
                   <Route path="/work-orders/:id" element={<WorkOrderDetail />} />
                   <Route path="/stock-movements" element={<StockMovements />} />
+                  <Route path="/equipment" element={<EquipmentList />} />
+                  <Route path="/equipment/:id" element={<EquipmentDetail />} />
                   <Route path="/users" element={<UserList />} />
                   <Route path="/reports" element={<Reports />} />
                   <Route path="/profile" element={<Profile />} />

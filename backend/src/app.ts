@@ -15,6 +15,7 @@ import workOrdersRoutes from './routes/workOrders';
 import stockMovementsRoutes from './routes/stockMovements';
 import dashboardRoutes from './routes/dashboard';
 import reportsRoutes from './routes/reports';
+import equipmentRoutes from './routes/equipment';
 
 const app = express();
 
@@ -37,6 +38,7 @@ app.use('/api/work-orders', workOrdersRoutes);
 app.use('/api/stock-movements', stockMovementsRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/reports', reportsRoutes);
+app.use('/api/equipment', equipmentRoutes);
 
 app.use(errorHandler);
 

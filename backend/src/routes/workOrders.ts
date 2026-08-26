@@ -9,7 +9,9 @@ import {
   workOrderItemSchema, 
   workOrderItemUpdateSchema, 
   laborLogSchema, 
-  equipmentLogSchema 
+  equipmentLogSchema,
+  equipmentAssignmentSchema,
+  equipmentAssignmentUpdateSchema
 } from '../validation/schemas';
 
 const router = Router();
@@ -112,8 +114,21 @@ router.get('/:id', async (req: AuthRequest, res: Response, next: NextFunction): 
       .leftJoin('users', 'labor_logs.user_id', 'users.id')
       .select('labor_logs.*', 'users.name as user_name');
     const equipment = await db('equipment_logs').where({ work_order_id: order.id });
+    const equipmentAssignments = await db('equipment_assignments')
+      .where({ 'equipment_assignments.work_order_id': order.id })
+      .leftJoin('equipment', 'equipment_assignments.equipment_id', 'equipment.id')
+      .leftJoin('users', 'equipment_assignments.created_by', 'users.id')
+      .select(
+        'equipment_assignments.*',
+        'equipment.name as equipment_name',
+        'equipment.equipment_type',
+        'equipment.ownership',
+        'equipment.serial_or_plate_no',
+        'users.name as creator_name'
+      )
+      .orderBy('equipment_assignments.start_date', 'desc');
 
-    res.json({ ...order, items, labor_logs: labor, equipment_logs: equipment });
+    res.json({ ...order, items, labor_logs: labor, equipment_logs: equipment, equipment_assignments: equipmentAssignments });
   } catch (error) {
     next(error);
   }
@@ -216,6 +231,13 @@ async function assertOrderWritable(req: AuthRequest, res: Response): Promise<boo
 router.post('/:id/items', validateRequest(workOrderItemSchema), async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
     if (!(await assertOrderWritable(req, res))) return;
+    const existing = await db('work_order_items')
+      .where({ work_order_id: req.params.id, product_id: req.body.product_id })
+      .first();
+    if (existing) {
+      res.status(400).json({ error: 'Bu üründen zaten bir talep satırı var, miktarı düzenleyin' });
+      return;
+    }
     const id = uuidv4();
     await db('work_order_items').insert({ id, work_order_id: req.params.id, ...req.body });
     res.status(201).json({ success: true });
@@ -235,6 +257,14 @@ router.put('/:id/items/:itemId', validateRequest(workOrderItemUpdateSchema), asy
     if (req.body.approved_quantity != null && Number(req.body.approved_quantity) > Number(item.requested_quantity)) {
       res.status(400).json({ error: 'Onaylanan miktar talep edileni aşamaz' });
       return;
+    }
+
+    if (req.body.used_quantity != null) {
+      const cap = req.body.approved_quantity ?? item.approved_quantity ?? item.requested_quantity;
+      if (Number(req.body.used_quantity) > Number(cap)) {
+        res.status(400).json({ error: 'Kullanılan miktar onaylanan (veya talep edilen) miktarı aşamaz' });
+        return;
+      }
     }
 
     // İLK ONAY: bekleyen OUT hareketini otomatik oluştur (tek kaynak ilkesi)
@@ -279,6 +309,124 @@ router.post('/:id/equipment', validateRequest(equipmentLogSchema), async (req: A
     next(error);
   }
 });
+
+// ──── NEW: Equipment Assignment endpoints (transaction-based) ────
+
+router.post('/:id/equipment-assignments', validateRequest(equipmentAssignmentSchema), async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    if (!(await assertOrderWritable(req, res))) return;
+    const { equipment_id } = req.body;
+
+    await db.transaction(async (trx) => {
+      const eq = await trx('equipment').where({ id: equipment_id }).first();
+      if (!eq) {
+        res.status(404).json({ error: 'Ekipman bulunamadı' });
+        return;
+      }
+
+      // field_worker cannot assign in_use equipment; admin/manager gets warning on frontend
+      if (eq.status === 'in_use' && req.user?.role === 'field_worker') {
+        res.status(400).json({ error: 'Bu ekipman şu anda kullanımda, yöneticinize başvurun' });
+        return;
+      }
+
+      const id = uuidv4();
+      await trx('equipment_assignments').insert({
+        id,
+        work_order_id: req.params.id,
+        created_by: req.user?.id,
+        ...req.body,
+      });
+
+      // Update equipment status to in_use (if not end_date provided = still active)
+      if (!req.body.end_date) {
+        await trx('equipment').where({ id: equipment_id }).update({ status: 'in_use', updated_at: db.fn.now() });
+      }
+
+      res.status(201).json({ success: true, id });
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.put('/:id/equipment-assignments/:assignmentId', validateRequest(equipmentAssignmentUpdateSchema), async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    if (!(await assertOrderWritable(req, res))) return;
+
+    await db.transaction(async (trx) => {
+      const assignment = await trx('equipment_assignments')
+        .where({ id: req.params.assignmentId, work_order_id: req.params.id })
+        .first();
+      if (!assignment) {
+        res.status(404).json({ error: 'Atama bulunamadı' });
+        return;
+      }
+
+      // Double-return protection
+      if (req.body.end_date && assignment.end_date) {
+        res.status(400).json({ error: 'Bu atama zaten iade edilmiş' });
+        return;
+      }
+
+      await trx('equipment_assignments')
+        .where({ id: req.params.assignmentId })
+        .update(req.body);
+
+      // If returning (end_date set), check if equipment has any remaining open assignments
+      if (req.body.end_date) {
+        const stillOpen = await trx('equipment_assignments')
+          .where({ equipment_id: assignment.equipment_id })
+          .whereNull('end_date')
+          .whereNot({ id: req.params.assignmentId })
+          .first();
+        if (!stillOpen) {
+          await trx('equipment').where({ id: assignment.equipment_id }).update({ status: 'available', updated_at: db.fn.now() });
+        }
+      }
+
+      res.json({ success: true });
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.delete('/:id/equipment-assignments/:assignmentId', async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    if (!(await assertOrderWritable(req, res))) return;
+
+    await db.transaction(async (trx) => {
+      const assignment = await trx('equipment_assignments')
+        .where({ id: req.params.assignmentId, work_order_id: req.params.id })
+        .first();
+      if (!assignment) {
+        res.status(404).json({ error: 'Atama bulunamadı' });
+        return;
+      }
+
+      const wasOpen = assignment.end_date === null;
+      await trx('equipment_assignments').where({ id: req.params.assignmentId }).del();
+
+      // State transition: if deleted assignment was open, check remaining
+      if (wasOpen) {
+        const stillOpen = await trx('equipment_assignments')
+          .where({ equipment_id: assignment.equipment_id })
+          .whereNull('end_date')
+          .first();
+        if (!stillOpen) {
+          await trx('equipment').where({ id: assignment.equipment_id }).update({ status: 'available', updated_at: db.fn.now() });
+        }
+      }
+
+      res.json({ success: true });
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ──── End Equipment Assignments ────
 
 router.delete('/:id/items/:itemId', async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {

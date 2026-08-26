@@ -21,6 +21,7 @@ const formSchema = z.object({
   description: z.string().optional(),
   client_type: z.string().min(1, 'Kurum tipi zorunludur'),
   assigned_to: z.string().uuid().optional(),
+  external_ref: z.string().max(100).optional(),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -40,6 +41,7 @@ export default function WorkOrderForm() {
       description: '',
       client_type: '',
       assigned_to: undefined,
+      external_ref: '',
     }
   });
 
@@ -109,6 +111,11 @@ export default function WorkOrderForm() {
                 </SelectContent>
               </Select>
               {errors.client_type && <span className="text-xs text-red-500">{errors.client_type.message}</span>}
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="external_ref">Kurum Talep / Referans No</Label>
+              <Input id="external_ref" {...register('external_ref')} />
             </div>
 
             <div className="grid gap-2">

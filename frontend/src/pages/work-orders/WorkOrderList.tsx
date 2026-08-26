@@ -148,7 +148,12 @@ export default function WorkOrderList() {
                   className="cursor-pointer hover:bg-gray-50"
                   onClick={() => navigate(`/work-orders/${order.id}`)}
                 >
-                  <TableCell className="font-medium font-mono">{order.order_no}</TableCell>
+                  <TableCell className="font-medium font-mono">
+                    {order.order_no}
+                    {order.external_ref && (
+                      <span className="block text-xs text-muted-foreground font-mono">{order.external_ref}</span>
+                    )}
+                  </TableCell>
                   <TableCell>{order.title}</TableCell>
                   <TableCell>{CLIENT_TYPES[order.client_type as keyof typeof CLIENT_TYPES] || order.client_type}</TableCell>
                   <TableCell><StatusBadge status={order.status} type="workOrder" /></TableCell>

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { workOrdersApi, reportsApi, productsApi, usersApi } from '@/lib/api';
+import { workOrdersApi, reportsApi, productsApi, usersApi, equipmentApi } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { LoadingSkeleton } from '@/components/shared/LoadingSkeleton';
@@ -15,7 +15,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, Check, X, FileText, Wrench, HardHat, DollarSign, Plus, Trash2 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
+import { ArrowLeft, Check, X, FileText, Wrench, HardHat, DollarSign, Plus, Trash2, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { tr } from 'date-fns/locale';
@@ -32,7 +34,24 @@ export default function WorkOrderDetail() {
   const [materialOpen, setMaterialOpen] = useState(false);
   const [laborOpen, setLaborOpen] = useState(false);
   const [equipmentOpen, setEquipmentOpen] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<{ kind: 'item' | 'labor' | 'equipment'; id: string; label: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ kind: 'item' | 'labor' | 'equipment' | 'equipment_assignment'; id: string; label: string } | null>(null);
+
+  const [isEquipAssignOpen, setIsEquipAssignOpen] = useState(false);
+  const [equipAssignForm, setEquipAssignForm] = useState({
+    equipment_id: '',
+    start_date: new Date().toISOString().slice(0, 10),
+    end_date: '',
+    supplier_name: '',
+    rate_unit: 'daily',
+    quantity_units: '',
+    cost: '',
+    notes: '',
+  });
+
+  const { data: equipmentList } = useQuery({
+    queryKey: ['equipment-mini'],
+    queryFn: () => equipmentApi.mini(),
+  });
 
   const { data: order, isLoading } = useQuery({
     queryKey: ['workOrder', id],
@@ -74,14 +93,90 @@ export default function WorkOrderDetail() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (t: { kind: 'item' | 'labor' | 'equipment'; id: string }) => {
+    mutationFn: (t: { kind: 'item' | 'labor' | 'equipment' | 'equipment_assignment'; id: string }) => {
       if (t.kind === 'item') return workOrdersApi.deleteItem(id as string, t.id);
       if (t.kind === 'labor') return workOrdersApi.deleteLabor(id as string, t.id);
+      if (t.kind === 'equipment_assignment') return workOrdersApi.deleteEquipmentAssignment(id as string, t.id);
       return workOrdersApi.deleteEquipment(id as string, t.id);
     },
     onSuccess: () => { invalidateAll(); toast.success('Kayıt silindi'); setDeleteTarget(null); },
     onError: (e: any) => { toast.error(e.response?.data?.error || 'Silinemedi'); setDeleteTarget(null); },
   });
+
+  const addEquipAssignMutation = useMutation({
+    mutationFn: (data: any) => workOrdersApi.addEquipmentAssignment(id as string, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workOrder', id] });
+      setIsEquipAssignOpen(false);
+      resetEquipAssignForm();
+      toast.success('Ekipman ataması oluşturuldu');
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.error || 'Ekipman ataması oluşturulamadı'),
+  });
+
+  const returnEquipAssignMutation = useMutation({
+    mutationFn: ({ assignmentId, end_date }: { assignmentId: string; end_date: string }) =>
+      workOrdersApi.updateEquipmentAssignment(id as string, assignmentId, { end_date }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workOrder', id] });
+      toast.success('Ekipman iade edildi');
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.error || 'Ekipman iade edilemedi'),
+  });
+
+  const deleteEquipAssignMutation = useMutation({
+    mutationFn: (assignmentId: string) =>
+      workOrdersApi.deleteEquipmentAssignment(id as string, assignmentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workOrder', id] });
+      toast.success('Ekipman ataması silindi');
+    },
+    onError: () => toast.error('Ekipman ataması silinemedi'),
+  });
+
+  const resetEquipAssignForm = () => {
+    setEquipAssignForm({
+      equipment_id: '',
+      start_date: new Date().toISOString().slice(0, 10),
+      end_date: '',
+      supplier_name: '',
+      rate_unit: 'daily',
+      quantity_units: '',
+      cost: '',
+      notes: '',
+    });
+  };
+
+  const handleEquipSelect = (equipId: string) => {
+    const eq = equipmentList?.find((e: any) => e.id === equipId);
+    setEquipAssignForm(prev => ({
+      ...prev,
+      equipment_id: equipId,
+      supplier_name: eq?.default_supplier_name || '',
+      rate_unit: eq?.default_rate_unit || 'daily',
+      cost: eq?.default_rate_cost ? String(eq.default_rate_cost) : '',
+    }));
+  };
+
+  const handleEquipAssignSubmit = () => {
+    const data: any = {
+      equipment_id: equipAssignForm.equipment_id,
+      start_date: equipAssignForm.start_date,
+      rate_unit: equipAssignForm.rate_unit,
+      cost: Number(equipAssignForm.cost) || 0,
+    };
+    if (equipAssignForm.end_date) data.end_date = equipAssignForm.end_date;
+    if (equipAssignForm.supplier_name) data.supplier_name = equipAssignForm.supplier_name;
+    if (equipAssignForm.quantity_units) data.quantity_units = Number(equipAssignForm.quantity_units);
+    if (equipAssignForm.notes) data.notes = equipAssignForm.notes;
+    addEquipAssignMutation.mutate(data);
+  };
+
+  const RATE_UNIT_LABELS: Record<string, string> = {
+    hourly: 'Saatlik',
+    daily: 'Günlük',
+    fixed: 'Sabit',
+  };
 
   if (isLoading) return <LoadingSkeleton variant="detail" />;
   if (!order) return <div>İş emri bulunamadı</div>;
@@ -111,6 +206,12 @@ export default function WorkOrderDetail() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div><p className="text-sm text-muted-foreground">Kurum Tipi</p><p className="font-medium">{order.client_type}</p></div>
+                {order.external_ref && (
+                  <div>
+                    <p className="text-sm text-muted-foreground">Kurum Referans No</p>
+                    <p className="font-mono font-medium">{order.external_ref}</p>
+                  </div>
+                )}
                 <div><p className="text-sm text-muted-foreground">Oluşturan</p><p className="font-medium">{order.creator_name || '-'}</p></div>
                 <div><p className="text-sm text-muted-foreground">Atanan</p><p className="font-medium">{order.assignee_name || 'Atanmadı'}</p></div>
                 <div><p className="text-sm text-muted-foreground">Tarih</p><p className="font-medium">{order.created_at ? format(new Date(order.created_at), 'dd MMM yyyy', { locale: tr }) : '-'}</p></div>
@@ -188,11 +289,7 @@ export default function WorkOrderDetail() {
                             <TableCell className="text-right">{isApproved ? `${item.approved_quantity} ${item.product_unit || ''}` : '-'}</TableCell>
                             <TableCell className="text-right">{item.used_quantity ?? '0'} {item.product_unit || ''}</TableCell>
                             <TableCell>
-                              {isApproved ? (
-                                <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">Onaylandı</span>
-                              ) : (
-                                <span className="text-xs bg-amber-100 text-amber-800 px-2 py-1 rounded">Onay Bekliyor</span>
-                              )}
+                              <StatusBadge status={isApproved ? 'approved' : 'pending'} type="approval" />
                             </TableCell>
                             <TableCell className="text-right">
                               <div className="flex justify-end gap-1">
@@ -265,41 +362,106 @@ export default function WorkOrderDetail() {
 
                 <TabsContent value="equipment" className="m-0">
                   <div className="flex justify-between items-center mb-4">
-                    <h3 className="font-medium text-lg">Ekipman Kayıtları</h3>
+                    <h3 className="font-medium text-lg">Ekipman Atamaları</h3>
                     {canWrite && (
-                      <Button size="sm" onClick={() => setEquipmentOpen(true)}><Plus className="w-4 h-4 mr-2" /> Ekipman Ekle</Button>
+                      <Button size="sm" onClick={() => setIsEquipAssignOpen(true)}>
+                        <Plus className="mr-2 h-4 w-4" /> Ekipman Ata
+                      </Button>
                     )}
                   </div>
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Ekipman Tipi</TableHead><TableHead>Özellikler</TableHead><TableHead>Tarih</TableHead>
-                        <TableHead className="text-right">Kira / Maliyet</TableHead>
-                        <TableHead className="text-right">İşlem</TableHead>
+                        <TableHead>Ekipman</TableHead>
+                        <TableHead>Başlangıç</TableHead>
+                        <TableHead>Bitiş</TableHead>
+                        <TableHead>Tedarikçi</TableHead>
+                        <TableHead>Birim</TableHead>
+                        <TableHead className="text-right">Maliyet</TableHead>
+                        <TableHead className="text-center">İşlemler</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {order.equipment_logs?.map((eq: any) => (
-                        <TableRow key={eq.id}>
-                          <TableCell className="font-medium">{eq.equipment_type}</TableCell>
-                          <TableCell>{eq.specs || eq.description || '-'}</TableCell>
-                          <TableCell>{eq.date ? format(new Date(eq.date), 'dd MMM yyyy', { locale: tr }) : '-'}</TableCell>
-                          <TableCell className="text-right">{formatCurrency(eq.rental_cost)}</TableCell>
-                          <TableCell className="text-right">
-                            {canWrite && (
-                              <Button size="sm" variant="ghost" className="text-red-500 hover:bg-red-50"
-                                onClick={() => setDeleteTarget({ kind: 'equipment', id: eq.id, label: eq.equipment_type || 'Ekipman' })}>
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            )}
+                      {order.equipment_assignments?.map((a: any) => (
+                        <TableRow key={a.id}>
+                          <TableCell>
+                            <div className="font-medium">{a.equipment_name}</div>
+                            <span className="text-xs text-muted-foreground">{a.equipment_type}</span>
+                          </TableCell>
+                          <TableCell>{a.start_date ? format(new Date(a.start_date), 'dd MMM yyyy', { locale: tr }) : '-'}</TableCell>
+                          <TableCell>
+                            {a.end_date ? format(new Date(a.end_date), 'dd MMM yyyy', { locale: tr }) : <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300">Aktif</Badge>}
+                          </TableCell>
+                          <TableCell>{a.supplier_name || '-'}</TableCell>
+                          <TableCell>{RATE_UNIT_LABELS[a.rate_unit] || a.rate_unit}{a.quantity_units ? ` (${a.quantity_units})` : ''}</TableCell>
+                          <TableCell className="text-right font-medium">{formatCurrency(a.cost)}</TableCell>
+                          <TableCell className="text-center">
+                            <div className="flex justify-center gap-1">
+                              {!a.end_date && canWrite && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  title="İade Et"
+                                  onClick={() => returnEquipAssignMutation.mutate({
+                                    assignmentId: a.id,
+                                    end_date: new Date().toISOString().slice(0, 10),
+                                  })}
+                                >
+                                  <Undo2 className="h-4 w-4" />
+                                </Button>
+                              )}
+                              {canWrite && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="text-destructive hover:bg-red-50"
+                                  title="Sil"
+                                  onClick={() => setDeleteTarget({ kind: 'equipment_assignment', id: a.id, label: a.equipment_name || 'Atama' })}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))}
-                      {!order.equipment_logs?.length && (
-                        <TableRow><TableCell colSpan={5} className="text-center py-4 text-muted-foreground">Henüz ekipman kaydı bulunmuyor</TableCell></TableRow>
+                      {!order.equipment_assignments?.length && (
+                        <TableRow>
+                          <TableCell colSpan={7} className="text-center py-4 text-muted-foreground">Ekipman ataması yok</TableCell>
+                        </TableRow>
                       )}
                     </TableBody>
                   </Table>
+                  {(order.equipment_assignments?.length ?? 0) > 0 && (
+                    <div className="mt-4 text-right">
+                      <span className="text-sm text-muted-foreground">Toplam Ekipman Maliyeti: </span>
+                      <span className="font-bold">{formatCurrency(order.equipment_assignments?.reduce((sum: number, a: any) => sum + Number(a.cost || 0), 0) || 0)}</span>
+                    </div>
+                  )}
+
+                  {(order.equipment_logs?.length || 0) > 0 && (
+                    <div className="mt-10">
+                      <h4 className="text-sm font-medium text-muted-foreground mb-3">Eski Ekipman Kayıtları</h4>
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Ekipman Tipi</TableHead><TableHead>Özellikler</TableHead><TableHead>Tarih</TableHead>
+                            <TableHead className="text-right">Kira / Maliyet</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {order.equipment_logs?.map((eq: any) => (
+                            <TableRow key={eq.id}>
+                              <TableCell className="font-medium">{eq.equipment_type}</TableCell>
+                              <TableCell>{eq.specs || eq.description || '-'}</TableCell>
+                              <TableCell>{eq.date ? format(new Date(eq.date), 'dd MMM yyyy', { locale: tr }) : '-'}</TableCell>
+                              <TableCell className="text-right">{formatCurrency(eq.rental_cost)}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
                 </TabsContent>
 
                 <TabsContent value="cost" className="m-0">
@@ -320,6 +482,89 @@ export default function WorkOrderDetail() {
       <AddMaterialDialog orderId={id as string} open={materialOpen} onClose={() => setMaterialOpen(false)} />
       <AddLaborDialog orderId={id as string} open={laborOpen} onClose={() => setLaborOpen(false)} />
       <AddEquipmentDialog orderId={id as string} open={equipmentOpen} onClose={() => setEquipmentOpen(false)} />
+      
+      <Dialog open={isEquipAssignOpen} onOpenChange={setIsEquipAssignOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Ekipman Ata</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Ekipman *</Label>
+              <Select value={equipAssignForm.equipment_id} onValueChange={(v) => handleEquipSelect(v || "")}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Ekipman seçin" />
+                </SelectTrigger>
+                <SelectContent>
+                  {equipmentList?.map((eq: any) => (
+                    <SelectItem key={eq.id} value={eq.id}>
+                      {eq.name} {eq.status !== 'available' ? `(Ö${eq.status === 'in_use' ? 'Kullanımda' : 'Bakımda'})` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Başlangıç Tarihi *</Label>
+                <Input type="date" value={equipAssignForm.start_date}
+                  onChange={e => setEquipAssignForm({...equipAssignForm, start_date: e.target.value})} />
+              </div>
+              <div className="space-y-2">
+                <Label>Bitiş Tarihi</Label>
+                <Input type="date" value={equipAssignForm.end_date}
+                  onChange={e => setEquipAssignForm({...equipAssignForm, end_date: e.target.value})} />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Tedarikçi</Label>
+              <Input value={equipAssignForm.supplier_name}
+                onChange={e => setEquipAssignForm({...equipAssignForm, supplier_name: e.target.value})}
+                placeholder="Tedarikçi adı" />
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label>Fiyat Birimi *</Label>
+                <Select value={equipAssignForm.rate_unit}
+                  onValueChange={v => setEquipAssignForm({...equipAssignForm, rate_unit: v || "daily"})}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="hourly">Saatlik</SelectItem>
+                    <SelectItem value="daily">Günlük</SelectItem>
+                    <SelectItem value="fixed">Sabit</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>{equipAssignForm.rate_unit === 'fixed' ? 'Miktar (ops)' : 'Saat/Gün Sayısı'}</Label>
+                <Input type="number" value={equipAssignForm.quantity_units}
+                  onChange={e => setEquipAssignForm({...equipAssignForm, quantity_units: e.target.value})}
+                  placeholder="0" />
+              </div>
+              <div className="space-y-2">
+                <Label>Maliyet (₺) *</Label>
+                <Input type="number" step="0.01" value={equipAssignForm.cost}
+                  onChange={e => setEquipAssignForm({...equipAssignForm, cost: e.target.value})}
+                  placeholder="0.00" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Not</Label>
+              <Textarea value={equipAssignForm.notes}
+                onChange={e => setEquipAssignForm({...equipAssignForm, notes: e.target.value})}
+                placeholder="İsteğe bağlı" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEquipAssignOpen(false)}>Vazgeç</Button>
+            <Button onClick={handleEquipAssignSubmit}
+              disabled={!equipAssignForm.equipment_id || !equipAssignForm.start_date || !equipAssignForm.cost || addEquipAssignMutation.isPending}>
+              Ata
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <ConfirmDialog
         open={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
