@@ -235,7 +235,9 @@ export default function WorkOrderDetail() {
                   <span className="text-sm font-medium">İş Emri Durumu</span>
                   {(isAdmin || user?.role === 'manager') ? (
                     <Select value={order.status} onValueChange={(val) => statusMutation.mutate((val ?? "draft") as any)}>
-                      <SelectTrigger className="w-[140px] h-8 text-xs"><SelectValue /></SelectTrigger>
+                      <SelectTrigger className="w-[140px] h-8 text-xs">
+                        <SelectValue>{(WORK_ORDER_STATUSES as any)[order.status]?.label ?? order.status}</SelectValue>
+                      </SelectTrigger>
                       <SelectContent>
                         {Object.entries(WORK_ORDER_STATUSES).map(([key, item]) => (
                           <SelectItem key={key} value={key}>{item.label}</SelectItem>
@@ -493,7 +495,11 @@ export default function WorkOrderDetail() {
               <Label>Ekipman *</Label>
               <Select value={equipAssignForm.equipment_id} onValueChange={(v) => handleEquipSelect(v || "")}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Ekipman seçin" />
+                  <SelectValue placeholder="Ekipman seçin">
+                    {equipAssignForm.equipment_id 
+                      ? equipmentList?.find((eq: any) => eq.id === equipAssignForm.equipment_id)?.name 
+                      : 'Ekipman seçin'}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {equipmentList?.map((eq: any) => (
@@ -527,7 +533,11 @@ export default function WorkOrderDetail() {
                 <Label>Fiyat Birimi *</Label>
                 <Select value={equipAssignForm.rate_unit}
                   onValueChange={v => setEquipAssignForm({...equipAssignForm, rate_unit: v || "daily"})}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger>
+                    <SelectValue>
+                      {equipAssignForm.rate_unit === 'hourly' ? 'Saatlik' : equipAssignForm.rate_unit === 'daily' ? 'Günlük' : 'Sabit'}
+                    </SelectValue>
+                  </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="hourly">Saatlik</SelectItem>
                     <SelectItem value="daily">Günlük</SelectItem>

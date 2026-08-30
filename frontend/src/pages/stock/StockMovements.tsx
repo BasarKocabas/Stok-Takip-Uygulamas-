@@ -119,7 +119,11 @@ export default function StockMovements() {
       />
       <div className="flex items-center space-x-2 max-w-xs mb-4">
         <Select value={type} onValueChange={(v) => { setType(v ?? "all"); setPage(1); }}>
-          <SelectTrigger><SelectValue placeholder="Hareket Tipi Seç" /></SelectTrigger>
+          <SelectTrigger>
+            <SelectValue placeholder="Hareket Tipi Seç">
+              {type === 'all' ? 'Tüm Hareketler' : type === 'IN' ? 'Giriş' : type === 'OUT' ? 'Çıkış' : 'Hareket Tipi Seç'}
+            </SelectValue>
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Tüm Hareketler</SelectItem>
             <SelectItem value="IN">Giriş</SelectItem>
@@ -236,7 +240,11 @@ export default function StockMovements() {
               <Label>İş Emri (Opsiyonel)</Label>
               <Select value={watch('work_order_id') || ''} onValueChange={(v) => setValue('work_order_id', v === 'none' ? '' : (v || ''))}>
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="İş Emri Seçin" />
+                  <SelectValue placeholder="İş Emri Seçin">
+                    {watch('work_order_id') && watch('work_order_id') !== 'none' 
+                      ? (() => { const wo = (workOrders?.data || []).find((w: any) => w.id === watch('work_order_id')); return wo ? `${wo.order_no} - ${wo.title}` : 'İş Emri Seçin'; })()
+                      : 'İş Emri Seçin'}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Seçilmedi</SelectItem>
