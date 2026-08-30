@@ -65,7 +65,7 @@ export const workOrdersApi = {
     api.post<{ success: boolean }>(`/work-orders/${id}/items`, data).then(r => r.data),
   updateItem: (id: string, itemId: string, data: { approved_quantity?: number; used_quantity?: number }) => 
     api.put<{ success: boolean }>(`/work-orders/${id}/items/${itemId}`, data).then(r => r.data),
-  addLabor: (id: string, data: { user_id: string; hours_worked: number; hourly_rate: number; date: string; notes?: string }) => 
+  addLabor: (id: string, data: { user_id: string; hours_worked: number; hourly_rate: number; date: string; notes?: string; rate_unit?: 'hourly' | 'daily' }) => 
     api.post<{ success: boolean }>(`/work-orders/${id}/labor`, data).then(r => r.data),
   addEquipment: (id: string, data: { equipment_type: string; description?: string; specs?: string; rental_cost: number; date: string }) => 
     api.post<{ success: boolean }>(`/work-orders/${id}/equipment`, data).then(r => r.data),
@@ -97,6 +97,7 @@ export const stockApi = {
       movement_type: data.movement_type || data.type || 'IN',
     }).then(r => r.data),
   approve: (id: string) => api.post<{ success: boolean }>(`/stock-movements/${id}/approve`).then(r => r.data),
+  reject: (id: string) => api.post<{ success: boolean }>(`/stock-movements/${id}/reject`).then(r => r.data),
 };
 
 // Users

@@ -63,7 +63,12 @@ export default function StockMovements() {
       toast.error(`${selectedProduct?.unit} birimli ürün için tam sayı giriniz`); return;
     }
     try {
-      await stockApi.create({ ...data, quantity: qty });
+      const payload = { ...data, quantity: qty };
+      if (!payload.work_order_id) delete payload.work_order_id;
+      if (!payload.supplier_name) delete payload.supplier_name;
+      if (!payload.invoice_no) delete payload.invoice_no;
+      if (!payload.notes) delete payload.notes;
+      await stockApi.create(payload);
       toast.success('Hareket onaya gönderildi');
       setIsModalOpen(false);
       reset({ product_id: '', movement_type: 'IN', quantity: '', notes: '', work_order_id: '', supplier_name: '', invoice_no: '' });
@@ -87,6 +92,22 @@ export default function StockMovements() {
       queryClient.invalidateQueries({ queryKey: ['report-client'] });
     } catch (e: any) {
       toast.error(e.response?.data?.error || 'Onaylanırken hata oluştu');
+    }
+  };
+
+  const handleReject = async (id: string) => {
+    try {
+      await stockApi.reject(id);
+      toast.success('Hareket reddedildi');
+      refetch();
+      queryClient.invalidateQueries({ queryKey: ['dashboardSummary'] });
+      queryClient.invalidateQueries({ queryKey: ['workOrder'] });
+      queryClient.invalidateQueries({ queryKey: ['workOrderCosts'] });
+      queryClient.invalidateQueries({ queryKey: ['movements'] });
+      queryClient.invalidateQueries({ queryKey: ['report-stock'] });
+      queryClient.invalidateQueries({ queryKey: ['report-client'] });
+    } catch (e: any) {
+      toast.error(e.response?.data?.error || 'Reddedilirken hata oluştu');
     }
   };
 
@@ -138,13 +159,16 @@ export default function StockMovements() {
                   <TableCell className="text-right font-bold">{m.quantity} {m.product_unit || ''}</TableCell>
                   <TableCell>{m.creator_name || '-'}</TableCell>
                   <TableCell>
-                    <StatusBadge status={m.is_approved ? 'approved' : 'pending'} type="approval" />
+                    <StatusBadge status={m.is_approved ? 'approved' : m.is_rejected ? 'rejected' : 'pending'} type="approval" />
                   </TableCell>
                   <TableCell>{m.is_approved ? (m.approver_name || '-') : '-'}</TableCell>
                   {user?.role === 'admin' && (
                     <TableCell className="text-right">
-                      {!m.is_approved && (
-                        <Button size="sm" onClick={() => handleApprove(m.id)}>Onayla</Button>
+                      {!m.is_approved && !m.is_rejected && (
+                        <div className="flex justify-end gap-1">
+                          <Button size="sm" variant="outline" className="text-red-600 hover:bg-red-50" onClick={() => handleReject(m.id)}>Reddet</Button>
+                          <Button size="sm" onClick={() => handleApprove(m.id)}>Onayla</Button>
+                        </div>
                       )}
                     </TableCell>
                   )}

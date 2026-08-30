@@ -341,7 +341,7 @@ export default function WorkOrderDetail() {
                         <TableRow key={log.id}>
                           <TableCell className="font-medium">{log.user_name || '-'}</TableCell>
                           <TableCell>{log.date ? format(new Date(log.date), 'dd MMM yyyy', { locale: tr }) : '-'}</TableCell>
-                          <TableCell className="text-right">{log.hours_worked} sa</TableCell>
+                          <TableCell className="text-right">{log.hours_worked} {log.rate_unit === 'daily' ? 'gün' : 'sa'}</TableCell>
                           <TableCell className="text-right">{formatCurrency(log.hourly_rate)}</TableCell>
                           <TableCell className="text-right">
                             {canWrite && (
@@ -642,11 +642,12 @@ function AddLaborDialog({ orderId, open, onClose }: { orderId: string; open: boo
   const [userId, setUserId] = useState('');
   const [hours, setHours] = useState('');
   const [rate, setRate] = useState('');
+  const [rateUnit, setRateUnit] = useState<'hourly' | 'daily'>('hourly');
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const userList = Array.isArray(users) ? users : [];
   const selectedUser = userList.find((u: any) => u.id === userId);
   const mutation = useMutation({
-    mutationFn: () => workOrdersApi.addLabor(orderId, { user_id: userId, hours_worked: Number(hours), hourly_rate: Number(rate), date }),
+    mutationFn: () => workOrdersApi.addLabor(orderId, { user_id: userId, hours_worked: Number(hours), hourly_rate: Number(rate), date, rate_unit: rateUnit }),
     onSuccess: () => {
       toast.success('İşçilik kaydı eklendi');
       queryClient.invalidateQueries({ queryKey: ['workOrder', orderId] });
@@ -675,9 +676,21 @@ function AddLaborDialog({ orderId, open, onClose }: { orderId: string; open: boo
               </SelectContent>
             </Select>
           </div>
+          <div className="grid gap-2">
+            <Label>Ücret Birimi</Label>
+            <Select value={rateUnit} onValueChange={(v) => setRateUnit((v as 'hourly' | 'daily') ?? 'hourly')}>
+              <SelectTrigger className="w-full">
+                <SelectValue>{rateUnit === 'hourly' ? 'Saatlik' : 'Günlük'}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="hourly">Saatlik</SelectItem>
+                <SelectItem value="daily">Günlük</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
           <div className="grid grid-cols-2 gap-2">
-            <div className="grid gap-2"><Label>Saat</Label><Input type="number" step={0.5} min={0.5} value={hours} onChange={(e) => setHours(e.target.value)} /></div>
-            <div className="grid gap-2"><Label>₺ / Saat</Label><Input type="number" step={0.01} min={0} value={rate} onChange={(e) => setRate(e.target.value)} /></div>
+            <div className="grid gap-2"><Label>{rateUnit === 'daily' ? 'Gün' : 'Saat'}</Label><Input type="number" step={0.5} min={0.5} value={hours} onChange={(e) => setHours(e.target.value)} /></div>
+            <div className="grid gap-2"><Label>{rateUnit === 'daily' ? '₺ / Gün' : '₺ / Saat'}</Label><Input type="number" step={0.01} min={0} value={rate} onChange={(e) => setRate(e.target.value)} /></div>
           </div>
           <div className="grid gap-2"><Label>Tarih</Label><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></div>
         </div>

@@ -71,6 +71,9 @@ export interface StockMovement {
   notes?: string;
   supplier_name?: string;
   invoice_no?: string;
+  is_rejected?: boolean;
+  rejected_by?: string;
+  rejected_at?: string | Date;
   created_by: string;
   created_at: string | Date;
 }
@@ -83,6 +86,7 @@ export interface LaborLog {
   hourly_rate: number;
   date: string | Date;
   notes?: string;
+  rate_unit?: 'hourly' | 'daily';
   created_at: string | Date;
 }
 

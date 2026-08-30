@@ -434,6 +434,21 @@ router.delete('/:id/items/:itemId', async (req: AuthRequest, res: Response, next
     const item = await db('work_order_items').where({ id: req.params.itemId, work_order_id: req.params.id }).first();
     if (!item) { res.status(404).json({ error: 'Kalem bulunamadı' }); return; }
     if (Number(item.used_quantity) > 0) { res.status(400).json({ error: 'Kullanılmış malzeme kalemi silinemez' }); return; }
+    // NOTE: deleting an item while its auto-created OUT movement is still pending would
+    // leave an orphan that bypasses the cap check at approval time (item lookup returns
+    // undefined → cap block skipped → stock decrements invisibly). Block until the
+    // movement is resolved on the Stock page. Rejected movements of deleted items remain
+    // in history as inert "ghost" rows (is_rejected=true forever, never touch stock) —
+    // intentional; do not auto-clean without a data-migration decision.
+    const pendingMov = await db('stock_movements')
+      .where({ work_order_id: req.params.id, product_id: item.product_id })
+      .where({ is_approved: false })
+      .where({ is_rejected: false })
+      .first();
+    if (pendingMov) {
+      res.status(400).json({ error: 'Bu kalem için bekleyen stok hareketi var. Önce Stok Hareketleri sayfasından onaylayın veya reddedin.' });
+      return;
+    }
     await db('work_order_items').where({ id: item.id }).del();
     res.json({ success: true });
   } catch (error) { next(error); }

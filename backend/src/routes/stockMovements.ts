@@ -29,6 +29,7 @@ router.get('/', async (req: AuthRequest, res: Response, next: NextFunction): Pro
     
     if (req.query.movement_type) query.where('stock_movements.movement_type', req.query.movement_type);
     if (req.query.is_approved !== undefined) query.where('stock_movements.is_approved', req.query.is_approved === 'true');
+    if (req.query.is_rejected !== undefined) query.where('stock_movements.is_rejected', req.query.is_rejected === 'true');
 
     const [{ count }] = await query.clone().count('stock_movements.id as count');
     const movements = await query.limit(limit).offset(offset).orderBy('stock_movements.created_at', 'desc');
@@ -86,6 +87,10 @@ router.post('/:id/approve', requireAdmin, async (req: AuthRequest, res: Response
       res.status(400).json({ error: 'Bu hareket zaten onaylanmış' });
       return;
     }
+    if (movement.is_rejected) {
+      res.status(400).json({ error: 'Reddedilmiş hareket onaylanamaz' });
+      return;
+    }
     await db.transaction(async (trx) => {
       const product = await trx('products').where({ id: movement.product_id }).first();
       if (!product) {
@@ -138,6 +143,19 @@ router.post('/:id/approve', requireAdmin, async (req: AuthRequest, res: Response
       next(error);
     }
   }
+});
+
+router.post('/:id/reject', requireAdmin, async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const movement = await db('stock_movements').where({ id: req.params.id }).first();
+    if (!movement) { res.status(404).json({ error: 'Hareket bulunamadı' }); return; }
+    if (movement.is_approved) { res.status(400).json({ error: 'Bu hareket zaten onaylanmış' }); return; }
+    if (movement.is_rejected) { res.status(400).json({ error: 'Bu hareket zaten reddedilmiş' }); return; }
+    await db('stock_movements').where({ id: movement.id }).update({
+      is_rejected: true, rejected_by: req.user?.id, rejected_at: db.fn.now(),
+    });
+    res.json({ success: true });
+  } catch (error) { next(error); }
 });
 
 export default router;

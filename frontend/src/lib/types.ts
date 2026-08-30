@@ -86,6 +86,9 @@ export interface StockMovement {
   product_code?: string;
   creator_name?: string;
   approver_name?: string;
+  is_rejected?: boolean;
+  rejected_by?: string;
+  rejected_at?: string;
 }
 
 export interface LaborLog {
@@ -98,6 +101,7 @@ export interface LaborLog {
   notes?: string;
   created_at: string;
   user_name?: string;
+  rate_unit?: 'hourly' | 'daily';
 }
 
 export interface EquipmentLog {

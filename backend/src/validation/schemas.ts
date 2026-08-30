@@ -91,12 +91,15 @@ export const stockMovementSchema = z.object({
   invoice_no: z.string().max(100).optional(),
 });
 
+// Semantics: hours_worked = quantity (hours OR days), hourly_rate = unit price (per hour OR per day);
+// cost math stays quantity × rate. Column names intentionally reused (accepted MVP naming trade-off).
 export const laborLogSchema = z.object({
   user_id: z.string().uuid(),
   hours_worked: z.number().positive(),
   hourly_rate: z.number().positive(),
   date: z.string().datetime().or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)),
   notes: z.string().optional(),
+  rate_unit: z.enum(['hourly', 'daily']).optional(),
 });
 
 export const equipmentLogSchema = z.object({
