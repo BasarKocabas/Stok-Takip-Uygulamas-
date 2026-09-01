@@ -17,7 +17,13 @@ router.get('/', async (req: AuthRequest, res: Response, next: NextFunction): Pro
     const limit = parseInt(req.query.limit as string) || 20;
     const offset = (page - 1) * limit;
 
-    const query = db('equipment').where({ is_active: true });
+    let query = db('equipment');
+    
+    if (req.user?.role === 'admin' && req.query.include_inactive === 'true') {
+      // Admin requesting inactive items: do not filter by is_active
+    } else {
+      query = query.where({ is_active: true });
+    }
 
     if (req.query.search) {
       const s = `%${req.query.search}%`;
@@ -41,8 +47,13 @@ router.get('/', async (req: AuthRequest, res: Response, next: NextFunction): Pro
 // GET /api/equipment/mini — lightweight list for selects
 router.get('/mini', async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const rows = await db('equipment')
-      .where({ is_active: true })
+    let query = db('equipment');
+    
+    if (req.user?.role !== 'admin' || req.query.include_inactive !== 'true') {
+      query = query.where({ is_active: true });
+    }
+
+    const rows = await query
       .select('id', 'name', 'equipment_type', 'ownership', 'status', 'default_supplier_name', 'default_rate_unit', 'default_rate_cost')
       .orderBy('name');
     res.json(rows);
@@ -54,7 +65,13 @@ router.get('/mini', async (req: AuthRequest, res: Response, next: NextFunction):
 // GET /api/equipment/:id — detail + assignment history
 router.get('/:id', async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const item = await db('equipment').where({ id: req.params.id, is_active: true }).first();
+    let query = db('equipment').where({ id: req.params.id });
+    
+    if (req.user?.role !== 'admin' || req.query.include_inactive !== 'true') {
+      query = query.where({ is_active: true });
+    }
+
+    const item = await query.first();
     if (!item) {
       res.status(404).json({ error: 'Ekipman bulunamadı' });
       return;
@@ -121,7 +138,12 @@ router.delete('/:id', requireAdmin, async (req: AuthRequest, res: Response, next
     }
     await db('equipment')
       .where({ id: req.params.id })
-      .update({ is_active: false, updated_at: db.fn.now() });
+      .update({ 
+        is_active: false, 
+        deactivated_by: req.user?.id,
+        deactivated_at: db.fn.now(),
+        updated_at: db.fn.now() 
+      });
     res.json({ success: true });
   } catch (error) {
     next(error);

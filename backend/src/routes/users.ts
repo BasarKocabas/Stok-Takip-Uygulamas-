@@ -78,7 +78,12 @@ router.delete('/:id', requireAdmin, async (req: AuthRequest, res: Response, next
       return;
     }
 
-    await db('users').where({ id: req.params.id }).update({ is_active: false, updated_at: db.fn.now() });
+    await db('users').where({ id: req.params.id }).update({ 
+      is_active: false, 
+      deactivated_by: req.user?.id,
+      deactivated_at: db.fn.now(),
+      updated_at: db.fn.now() 
+    });
     res.json({ success: true });
   } catch (error) {
     next(error);

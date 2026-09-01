@@ -1,0 +1,2980 @@
+PORT=3001
+JWT_SECRET=your-secret-key-change-this
+CORS_ORIGIN=http://localhost:5173
+NODE_ENV=development
+FROM node:22-alpine
+WORKDIR /app
+COPY package*.json ./
+RUN apk add --no-cache python3 make g++
+RUN npm install
+COPY . .
+RUN npm run build
+EXPOSE 3001
+CMD ["sh", "-c", "npm run migrate && npm run seed && npm start"]
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "migrate": "tsx src/db/run-migrate.ts",
+    "seed": "tsx src/db/run-seed.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^13.0.3",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.6.2",
+    "helmet": "^8.3.0",
+    "jsonwebtoken": "^9.0.3",
+    "knex": "^3.3.0",
+    "morgan": "^1.11.0",
+    "node-cron": "^4.6.0",
+    "uuid": "^14.0.2",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/morgan": "^1.9.10",
+    "@types/node": "^26.2.0",
+    "@types/uuid": "^10.0.0",
+    "nodemon": "^3.1.14",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.23.12",
+    "typescript": "^7.0.2"
+  }
+}
+import knex from 'knex';
+import config from './knexfile';
+
+const db = knex(config);
+export default db;
+import path from 'path';
+import type { Knex } from 'knex';
+
+const config: Knex.Config = {
+  client: 'better-sqlite3',
+  connection: {
+    filename: path.resolve(process.cwd(), 'data/app.db'),
+  },
+  useNullAsDefault: true,
+  migrations: {
+    directory: path.resolve(process.cwd(), 'src/db/migrations'),
+    extension: 'ts',
+  },
+  seeds: {
+    directory: path.resolve(process.cwd(), 'src/db/seeds'),
+    extension: 'ts',
+  },
+};
+
+export default config;
+import type { Knex } from 'knex';
+
+export async function up(knex: Knex): Promise<void> {
+  // users
+  await knex.schema.createTable('users', (table) => {
+    table.uuid('id').primary();
+    table.string('name').notNullable();
+    table.string('email').unique().notNullable();
+    table.string('password_hash').notNullable();
+    table.string('role').defaultTo('field_worker');
+    table.boolean('is_authorized_creator').defaultTo(false);
+    table.boolean('is_active').defaultTo(true);
+    table.timestamp('created_at').defaultTo(knex.fn.now());
+    table.timestamp('updated_at').defaultTo(knex.fn.now());
+  });
+
+  // products
+  await knex.schema.createTable('products', (table) => {
+    table.uuid('id').primary();
+    table.string('code').unique().notNullable();
+    table.string('name').notNullable();
+    table.string('unit').notNullable();
+    table.decimal('current_stock').defaultTo(0);
+    table.decimal('min_stock_level').defaultTo(0);
+    table.boolean('is_active').defaultTo(true);
+    table.timestamp('created_at').defaultTo(knex.fn.now());
+    table.timestamp('updated_at').defaultTo(knex.fn.now());
+  });
+
+  // product_cost_history
+  await knex.schema.createTable('product_cost_history', (table) => {
+    table.uuid('id').primary();
+    table.uuid('product_id').references('id').inTable('products').onDelete('RESTRICT');
+    table.decimal('unit_cost').notNullable();
+    table.date('effective_date').notNullable();
+    table.text('notes').nullable();
+    table.timestamp('created_at').defaultTo(knex.fn.now());
+  });
+
+  // work_orders
+  await knex.schema.createTable('work_orders', (table) => {
+    table.uuid('id').primary();
+    table.string('order_no').unique().notNullable();
+    table.string('title').notNullable();
+    table.text('description').nullable();
+    table.string('client_type').notNullable();
+    table.string('status').defaultTo('draft');
+    table.string('approval_status').defaultTo('pending');
+    table.uuid('created_by').references('id').inTable('users').onDelete('RESTRICT');
+    table.uuid('assigned_to').references('id').inTable('users').onDelete('RESTRICT').nullable();
+    table.uuid('approved_by').references('id').inTable('users').onDelete('RESTRICT').nullable();
+    table.timestamp('approved_at').nullable();
+    table.boolean('is_active').defaultTo(true);
+    table.timestamp('created_at').defaultTo(knex.fn.now());
+    table.timestamp('updated_at').defaultTo(knex.fn.now());
+  });
+
+  // work_order_items
+  await knex.schema.createTable('work_order_items', (table) => {
+    table.uuid('id').primary();
+    table.uuid('work_order_id').references('id').inTable('work_orders').onDelete('RESTRICT');
+    table.uuid('product_id').references('id').inTable('products').onDelete('RESTRICT');
+    table.decimal('requested_quantity').notNullable();
+    table.decimal('approved_quantity').nullable();
+    table.decimal('used_quantity').defaultTo(0);
+    table.timestamp('created_at').defaultTo(knex.fn.now());
+  });
+
+  // stock_movements
+  await knex.schema.createTable('stock_movements', (table) => {
+    table.uuid('id').primary();
+    table.uuid('product_id').references('id').inTable('products').onDelete('RESTRICT');
+    table.uuid('work_order_id').references('id').inTable('work_orders').onDelete('RESTRICT').nullable();
+    table.string('movement_type').notNullable();
+    table.decimal('quantity').notNullable();
+    table.boolean('is_approved').defaultTo(false);
+    table.uuid('approved_by').references('id').inTable('users').onDelete('RESTRICT').nullable();
+    table.timestamp('approved_at').nullable();
+    table.text('notes').nullable();
+    table.uuid('created_by').references('id').inTable('users').onDelete('RESTRICT');
+    table.timestamp('created_at').defaultTo(knex.fn.now());
+  });
+
+  // labor_logs
+  await knex.schema.createTable('labor_logs', (table) => {
+    table.uuid('id').primary();
+    table.uuid('work_order_id').references('id').inTable('work_orders').onDelete('RESTRICT');
+    table.uuid('user_id').references('id').inTable('users').onDelete('RESTRICT');
+    table.decimal('hours_worked').notNullable();
+    table.decimal('hourly_rate').notNullable();
+    table.date('date').notNullable();
+    table.text('notes').nullable();
+    table.timestamp('created_at').defaultTo(knex.fn.now());
+  });
+
+  // equipment_logs
+  await knex.schema.createTable('equipment_logs', (table) => {
+    table.uuid('id').primary();
+    table.uuid('work_order_id').references('id').inTable('work_orders').onDelete('RESTRICT');
+    table.string('equipment_type').notNullable();
+    table.text('description').nullable();
+    table.text('specs').nullable();
+    table.decimal('rental_cost').defaultTo(0);
+    table.date('date').notNullable();
+    table.text('notes').nullable();
+    table.timestamp('created_at').defaultTo(knex.fn.now());
+  });
+}
+
+export async function down(knex: Knex): Promise<void> {
+  await knex.schema.dropTableIfExists('equipment_logs');
+  await knex.schema.dropTableIfExists('labor_logs');
+  await knex.schema.dropTableIfExists('stock_movements');
+  await knex.schema.dropTableIfExists('work_order_items');
+  await knex.schema.dropTableIfExists('work_orders');
+  await knex.schema.dropTableIfExists('product_cost_history');
+  await knex.schema.dropTableIfExists('products');
+  await knex.schema.dropTableIfExists('users');
+}
+import type { Knex } from 'knex';
+
+export async function up(knex: Knex): Promise<void> {
+  const add = (t: string, c: string[]) => knex.schema.alterTable(t, (x) => x.index(c));
+  await add('stock_movements', ['product_id']);
+  await add('stock_movements', ['work_order_id']);
+  await add('stock_movements', ['is_approved']);
+  await add('work_order_items', ['work_order_id']);
+  await add('work_order_items', ['product_id']);
+  await add('product_cost_history', ['product_id', 'effective_date']);
+  await add('labor_logs', ['work_order_id']);
+  await add('equipment_logs', ['work_order_id']);
+  await add('work_orders', ['status']);
+  await add('work_orders', ['approval_status']);
+}
+
+export async function down(knex: Knex): Promise<void> {
+  const drop = (t: string, c: string[]) => knex.schema.alterTable(t, (x) => x.dropIndex(c));
+  await drop('work_orders', ['approval_status']);
+  await drop('work_orders', ['status']);
+  await drop('equipment_logs', ['work_order_id']);
+  await drop('labor_logs', ['work_order_id']);
+  await drop('product_cost_history', ['product_id', 'effective_date']);
+  await drop('work_order_items', ['product_id']);
+  await drop('work_order_items', ['work_order_id']);
+  await drop('stock_movements', ['is_approved']);
+  await drop('stock_movements', ['work_order_id']);
+  await drop('stock_movements', ['product_id']);
+}
+import type { Knex } from 'knex';
+
+export async function up(knex: Knex): Promise<void> {
+  // Add external_ref to work_orders
+  await knex.schema.alterTable('work_orders', (table) => {
+    table.string('external_ref').nullable();
+  });
+
+  // Add supplier_name and invoice_no to stock_movements
+  await knex.schema.alterTable('stock_movements', (table) => {
+    table.string('supplier_name').nullable();
+    table.string('invoice_no').nullable();
+  });
+}
+
+export async function down(knex: Knex): Promise<void> {
+  await knex.schema.alterTable('work_orders', (table) => {
+    table.dropColumn('external_ref');
+  });
+  await knex.schema.alterTable('stock_movements', (table) => {
+    table.dropColumn('supplier_name');
+    table.dropColumn('invoice_no');
+  });
+}
+import type { Knex } from 'knex';
+
+export async function up(knex: Knex): Promise<void> {
+  // 1. Equipment catalog table
+  await knex.schema.createTable('equipment', (table) => {
+    table.uuid('id').primary();
+    table.string('name').notNullable();
+    table.string('equipment_type').notNullable();
+    table.string('ownership').defaultTo('rented'); // 'owned' | 'rented'
+    table.string('status').defaultTo('available'); // 'available' | 'in_use' | 'maintenance'
+    table.text('specs').nullable();
+    table.string('serial_or_plate_no').nullable();
+    table.string('default_supplier_name').nullable();
+    table.string('default_rate_unit').nullable(); // 'hourly' | 'daily' | 'fixed'
+    table.decimal('default_rate_cost').nullable();
+    table.boolean('is_active').defaultTo(true);
+    table.timestamp('created_at').defaultTo(knex.fn.now());
+    table.timestamp('updated_at').defaultTo(knex.fn.now());
+  });
+
+  // 2. Equipment assignments table (replaces equipment_logs for new data)
+  await knex.schema.createTable('equipment_assignments', (table) => {
+    table.uuid('id').primary();
+    table.uuid('equipment_id').references('id').inTable('equipment').onDelete('RESTRICT');
+    table.uuid('work_order_id').references('id').inTable('work_orders').onDelete('RESTRICT');
+    table.date('start_date').notNullable();
+    table.date('end_date').nullable(); // NULL = still in use
+    table.string('supplier_name').nullable();
+    table.string('rate_unit').defaultTo('daily'); // 'hourly' | 'daily' | 'fixed'
+    table.decimal('quantity_units').nullable(); // hours/days count (null for fixed)
+    table.decimal('cost').defaultTo(0);
+    table.text('notes').nullable();
+    table.uuid('created_by').references('id').inTable('users').onDelete('RESTRICT');
+    table.timestamp('created_at').defaultTo(knex.fn.now());
+  });
+
+  // 3. Index for faster lookups
+  await knex.schema.alterTable('equipment_assignments', (table) => {
+    table.index(['equipment_id']);
+    table.index(['work_order_id']);
+  });
+
+  // 4. Data migration: create catalog entries from distinct equipment_types
+  const distinctTypes = await knex('equipment_logs')
+    .distinct('equipment_type')
+    .whereNotNull('equipment_type');
+
+  const { v4: uuidv4 } = await import('uuid');
+
+  const catalogMap: Record<string, string> = {};
+  for (const row of distinctTypes) {
+    const id = uuidv4();
+    catalogMap[row.equipment_type] = id;
+    await knex('equipment').insert({
+      id,
+      name: row.equipment_type,
+      equipment_type: row.equipment_type,
+      ownership: 'rented',
+      status: 'available',
+      default_rate_unit: 'fixed',
+      is_active: true,
+    });
+  }
+
+  // 5. Data migration: convert equipment_logs to equipment_assignments
+  const logs = await knex('equipment_logs').select('*');
+  for (const log of logs) {
+    const equipmentId = catalogMap[log.equipment_type];
+    if (!equipmentId) continue;
+
+    // Get work order creator as fallback for created_by
+    const wo = await knex('work_orders').where({ id: log.work_order_id }).first();
+
+    await knex('equipment_assignments').insert({
+      id: uuidv4(),
+      equipment_id: equipmentId,
+      work_order_id: log.work_order_id,
+      start_date: log.date,
+      end_date: log.date, // Closed (historical record)
+      supplier_name: null,
+      rate_unit: 'fixed', // Old data has no unit breakdown
+      quantity_units: null,
+      cost: log.rental_cost || 0,
+      notes: [log.description, log.specs, log.notes].filter(Boolean).join(' — ') || null,
+      created_by: wo?.created_by || null,
+    });
+  }
+
+  // Note: equipment_logs table is preserved for rollback safety
+}
+
+export async function down(knex: Knex): Promise<void> {
+  await knex.schema.dropTableIfExists('equipment_assignments');
+  await knex.schema.dropTableIfExists('equipment');
+}
+import type { Knex } from 'knex';
+
+export async function up(knex: Knex): Promise<void> {
+  await knex.schema.alterTable('stock_movements', (table) => {
+    table.boolean('is_rejected').defaultTo(false);
+    table.uuid('rejected_by').nullable().references('id').inTable('users');
+    table.timestamp('rejected_at').nullable();
+  });
+  await knex.schema.alterTable('labor_logs', (table) => {
+    table.string('rate_unit').defaultTo('hourly'); // 'hourly' | 'daily'
+  });
+}
+
+export async function down(knex: Knex): Promise<void> {
+  await knex.schema.alterTable('stock_movements', (table) => {
+    table.dropColumn('is_rejected');
+    table.dropColumn('rejected_by');
+    table.dropColumn('rejected_at');
+  });
+  await knex.schema.alterTable('labor_logs', (table) => {
+    table.dropColumn('rate_unit');
+  });
+}
+import type { Knex } from 'knex';
+
+export async function up(knex: Knex): Promise<void> {
+  await knex.schema.alterTable('work_order_items', (table) => {
+    table.unique(['work_order_id', 'product_id']);
+  });
+}
+
+export async function down(knex: Knex): Promise<void> {
+  await knex.schema.alterTable('work_order_items', (table) => {
+    table.dropUnique(['work_order_id', 'product_id']);
+  });
+}
+import type { Knex } from 'knex';
+
+export const config = { transaction: false };
+
+const TABLES = ['users', 'products', 'work_orders', 'equipment'];
+
+export async function up(knex: Knex): Promise<void> {
+  await knex.raw('PRAGMA foreign_keys = OFF');
+  for (const t of TABLES) {
+    await knex.schema.alterTable(t, (table) => {
+      table.uuid('deactivated_by').nullable().references('id').inTable('users').onDelete('SET NULL');
+      table.timestamp('deactivated_at').nullable();
+    });
+  }
+  await knex.raw('PRAGMA foreign_keys = ON');
+}
+
+export async function down(knex: Knex): Promise<void> {
+  await knex.raw('PRAGMA foreign_keys = OFF');
+  for (const t of TABLES) {
+    await knex.schema.alterTable(t, (table) => {
+      table.dropColumn('deactivated_by');
+      table.dropColumn('deactivated_at');
+    });
+  }
+  await knex.raw('PRAGMA foreign_keys = ON');
+}
+import db from './connection';
+
+async function runMigrations() {
+  try {
+    console.log('Running migrations...');
+    await db.migrate.latest();
+    console.log('Migrations completed successfully.');
+  } catch (error) {
+    console.error('Error running migrations:', error);
+  } finally {
+    process.exit(0);
+  }
+}
+
+runMigrations();
+import db from './connection';
+
+async function runSeeds() {
+  try {
+    console.log('Running seeds...');
+    await db.seed.run();
+    console.log('Seeds completed successfully.');
+  } catch (error) {
+    console.error('Error running seeds:', error);
+  } finally {
+    process.exit(0);
+  }
+}
+
+runSeeds();
+import type { Knex } from 'knex';
+import { v4 as uuidv4 } from 'uuid';
+import bcrypt from 'bcryptjs';
+
+export async function seed(knex: Knex): Promise<void> {
+  const usersCount = await knex('users').count('* as count').first();
+  if (usersCount && Number(usersCount.count) > 0) {
+    console.log('Database already seeded, skipping...');
+    return;
+  }
+
+  // Deletes ALL existing entries
+  await knex('equipment_logs').del();
+  await knex('labor_logs').del();
+  await knex('stock_movements').del();
+  await knex('work_order_items').del();
+  await knex('work_orders').del();
+  await knex('product_cost_history').del();
+  await knex('products').del();
+  await knex('users').del();
+
+  const passwordHash = await bcrypt.hash('password123', 10);
+
+  const adminId = uuidv4();
+  const managerId = uuidv4();
+  const workerId = uuidv4();
+
+  await knex('users').insert([
+    { id: adminId, name: 'Barış', email: 'admin@ansava.com', password_hash: passwordHash, role: 'admin', is_authorized_creator: true },
+    { id: managerId, name: 'Veysel', email: 'manager@ansava.com', password_hash: passwordHash, role: 'manager', is_authorized_creator: true },
+    { id: workerId, name: 'Mustafa', email: 'worker@ansava.com', password_hash: passwordHash, role: 'field_worker', is_authorized_creator: false },
+  ]);
+
+  const p1 = uuidv4();
+  const p2 = uuidv4();
+  const p3 = uuidv4();
+  const p4 = uuidv4();
+  const p5 = uuidv4();
+
+  await knex('products').insert([
+    { id: p1, code: 'PRD-001', name: 'Çelik Boru', unit: 'metre', current_stock: 100, min_stock_level: 20 },
+    { id: p2, code: 'PRD-002', name: 'Alüminyum Profil', unit: 'metre', current_stock: 50, min_stock_level: 10 },
+    { id: p3, code: 'PRD-003', name: 'Sac Levha', unit: 'adet', current_stock: 200, min_stock_level: 50 },
+    { id: p4, code: 'PRD-004', name: 'Bakır Kablo 80V', unit: 'metre', current_stock: 500, min_stock_level: 100 },
+    { id: p5, code: 'PRD-005', name: 'Cıvata M10', unit: 'adet', current_stock: 1000, min_stock_level: 200 },
+  ]);
+
+  await knex('product_cost_history').insert([
+    { id: uuidv4(), product_id: p1, unit_cost: 45.5, effective_date: '2024-01-01' },
+    { id: uuidv4(), product_id: p2, unit_cost: 30.0, effective_date: '2024-01-01' },
+    { id: uuidv4(), product_id: p3, unit_cost: 120.0, effective_date: '2024-01-01' },
+    { id: uuidv4(), product_id: p4, unit_cost: 15.0, effective_date: '2024-01-01' },
+    { id: uuidv4(), product_id: p5, unit_cost: 2.5, effective_date: '2024-01-01' },
+  ]);
+
+  const wo1 = uuidv4();
+  const wo2 = uuidv4();
+
+  await knex('work_orders').insert([
+    { id: wo1, order_no: 'IE-2024-001', title: 'İZBAN Hat Bakımı', description: 'Hat bakım onarım', client_type: 'izban', status: 'in_progress', approval_status: 'approved', created_by: managerId, assigned_to: workerId, approved_by: adminId, approved_at: knex.fn.now() },
+    { id: wo2, order_no: 'IE-2024-002', title: 'Belediye Park Düzenleme', description: 'Park düzenlemesi', client_type: 'belediye', status: 'open', approval_status: 'pending', created_by: managerId, assigned_to: workerId },
+  ]);
+
+  await knex('work_order_items').insert([
+    { id: uuidv4(), work_order_id: wo1, product_id: p1, requested_quantity: 10, approved_quantity: 10, used_quantity: 5 },
+    { id: uuidv4(), work_order_id: wo1, product_id: p4, requested_quantity: 50, approved_quantity: 50, used_quantity: 20 },
+  ]);
+
+  await knex('stock_movements').insert([
+    { id: uuidv4(), product_id: p1, movement_type: 'IN', quantity: 100, is_approved: true, created_by: adminId },
+    { id: uuidv4(), product_id: p1, work_order_id: wo1, movement_type: 'OUT', quantity: 10, is_approved: true, approved_by: adminId, approved_at: knex.fn.now(), created_by: workerId },
+  ]);
+
+  await knex('labor_logs').insert([
+    { id: uuidv4(), work_order_id: wo1, user_id: workerId, hours_worked: 8, hourly_rate: 200, date: '2024-01-10' },
+  ]);
+
+  await knex('equipment_logs').insert([
+    { id: uuidv4(), work_order_id: wo1, equipment_type: 'Ekskavatör', rental_cost: 1500, date: '2024-01-10' },
+  ]);
+
+  // Kritik stok demosu: Sac Levha minimumun altına
+  await knex('products').where({ id: p3 }).update({ current_stock: 30 }); // min 50
+
+  // Canlı onay demosu: bekleyen çıkış talebi
+  await knex('stock_movements').insert({
+    id: uuidv4(), product_id: p4, work_order_id: wo1,
+    movement_type: 'OUT', quantity: 20, is_approved: false, created_by: workerId,
+  });
+}
+import { Request, Response, NextFunction } from 'express';
+import jwt from 'jsonwebtoken';
+import dotenv from 'dotenv';
+import db from '../db/connection'; // NEW IMPORT
+
+dotenv.config();
+
+function resolveSecret(): string {
+  if (process.env.JWT_SECRET) return process.env.JWT_SECRET;
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('JWT_SECRET environment variable is required in production');
+  }
+  console.warn('[auth] JWT_SECRET yok — dev fallback kullanılıyor');
+  return 'ansava-dev-only-fallback';
+}
+
+export const JWT_SECRET: string = resolveSecret();
+
+export interface AuthRequest extends Request {
+  user?: {
+    id: string;
+    role: string;
+    is_authorized_creator: boolean;
+  };
+}
+
+export const authenticate = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) {
+    res.status(401).json({ error: 'Yetkilendirme hatası: Token bulunamadı' });
+    return;
+  }
+
+  const token = authHeader.split(' ')[1];
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET) as any;
+
+    // NEW: re-check against the DB instead of trusting the token's claims blindly
+    const user = await db('users').where({ id: decoded.id }).first();
+    if (!user || !user.is_active) {
+      res.status(401).json({ error: 'Hesap devre dışı veya bulunamadı, lütfen tekrar giriş yapın' });
+      return;
+    }
+    if (
+      user.role !== decoded.role ||
+      Boolean(user.is_authorized_creator) !== Boolean(decoded.is_authorized_creator)
+    ) {
+      res.status(401).json({ error: 'Yetki bilgileriniz değişti, lütfen tekrar giriş yapın' });
+      return;
+    }
+
+    req.user = {
+      id: user.id,
+      role: user.role,
+      is_authorized_creator: Boolean(user.is_authorized_creator),
+    };
+    next();
+  } catch (error) {
+    res.status(401).json({ error: 'Geçersiz token' });
+  }
+};
+
+export const requireAdmin = (req: AuthRequest, res: Response, next: NextFunction): void => {
+  if (req.user?.role !== 'admin') {
+    res.status(403).json({ error: 'Bu işlem için yetkiniz yok' });
+    return;
+  }
+  next();
+};
+
+export const requireAuthorizedCreator = (req: AuthRequest, res: Response, next: NextFunction): void => {
+  if (req.user?.role !== 'admin' && !req.user?.is_authorized_creator) {
+    res.status(403).json({ error: 'İş emri oluşturma yetkiniz yok' });
+    return;
+  }
+  next();
+};
+import { Request, Response, NextFunction } from 'express';
+
+export const errorHandler = (err: any, req: Request, res: Response, next: NextFunction): void => {
+  console.error(err.stack);
+
+  const status = err.status || 500;
+  const message = typeof err.message === 'string' ? err.message : 'Sunucu hatası';
+
+  res.status(status).json({
+    error: message,
+    ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
+  });
+};
+import { Request, Response, NextFunction } from 'express';
+import { ZodSchema, ZodError } from 'zod';
+
+export const validateRequest = (schema: ZodSchema) => {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      req.body = await schema.parseAsync(req.body);
+      next();
+    } catch (error) {
+      if (error instanceof ZodError) {
+        res.status(400).json({ error: 'Geçersiz veri', details: error.issues });
+        return;
+      }
+      next(error);
+    }
+  };
+};
+import { Router, Request, Response, NextFunction } from 'express';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import { v4 as uuidv4 } from 'uuid';
+import db from '../db/connection';
+import { validateRequest } from '../middleware/validateRequest';
+import { loginSchema, registerSchema, profileUpdateSchema, passwordChangeSchema } from '../validation/schemas';
+import { authenticate, requireAdmin, AuthRequest, JWT_SECRET } from '../middleware/auth';
+
+const router = Router();
+
+router.post('/login', validateRequest(loginSchema), async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { email, password } = req.body;
+    const user = await db('users').where({ email, is_active: true }).first();
+
+    if (!user || !(await bcrypt.compare(password, user.password_hash))) {
+      res.status(401).json({ error: 'Geçersiz email veya şifre' });
+      return;
+    }
+
+    const token = jwt.sign(
+      { id: user.id, role: user.role, is_authorized_creator: user.is_authorized_creator },
+      JWT_SECRET,
+      { expiresIn: '1d' }
+    );
+
+    res.json({
+      token,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        is_authorized_creator: Boolean(user.is_authorized_creator),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/register', authenticate, requireAdmin, validateRequest(registerSchema), async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { name, email, password, role, is_authorized_creator } = req.body;
+
+    const existing = await db('users').where({ email }).first();
+    if (existing) {
+      res.status(400).json({ error: 'Bu email zaten kullanımda' });
+      return;
+    }
+
+    const id = uuidv4();
+    const password_hash = await bcrypt.hash(password, 10);
+    await db('users').insert({
+      id,
+      name,
+      email,
+      password_hash,
+      role: role || 'field_worker',
+      is_authorized_creator: is_authorized_creator || false,
+    });
+
+    const user = await db('users').where({ id }).first();
+    res.status(201).json({
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        is_authorized_creator: Boolean(user.is_authorized_creator),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/me', authenticate, async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const user = await db('users').where({ id: req.user?.id }).first();
+    if (!user) {
+      res.status(404).json({ error: 'Kullanıcı bulunamadı' });
+      return;
+    }
+    const { password_hash, ...safeUser } = user;
+    res.json(safeUser);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.put('/profile', authenticate, validateRequest(profileUpdateSchema), async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const user = await db('users').where({ id: req.user?.id }).first();
+    if (!user) { res.status(404).json({ error: 'Kullanıcı bulunamadı' }); return; }
+    const ok = await bcrypt.compare(req.body.current_password, user.password_hash);
+    if (!ok) { res.status(400).json({ error: 'Mevcut şifre hatalı' }); return; }
+    const dup = await db('users').where({ email: req.body.email }).whereNot({ id: user.id }).first();
+    if (dup) { res.status(400).json({ error: 'Bu e-posta zaten kullanımda' }); return; }
+    const name = `${req.body.first_name.trim()} ${req.body.last_name.trim()}`;
+    await db('users').where({ id: user.id }).update({ name, email: req.body.email, updated_at: db.fn.now() });
+    res.json({ success: true });
+  } catch (error) { next(error); }
+});
+
+router.put('/password', authenticate, validateRequest(passwordChangeSchema), async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const user = await db('users').where({ id: req.user?.id }).first();
+    if (!user) { res.status(404).json({ error: 'Kullanıcı bulunamadı' }); return; }
+    const ok = await bcrypt.compare(req.body.current_password, user.password_hash);
+    if (!ok) { res.status(400).json({ error: 'Mevcut şifre hatalı' }); return; }
+    const password_hash = await bcrypt.hash(req.body.new_password, 10);
+    await db('users').where({ id: user.id }).update({ password_hash, updated_at: db.fn.now() });
+    res.json({ success: true });
+  } catch (error) { next(error); }
+});
+
+export default router;
+import { Router, Response, NextFunction } from 'express';
+import db from '../db/connection';
+import { authenticate, AuthRequest } from '../middleware/auth';
+
+const router = Router();
+router.use(authenticate);
+
+router.get('/summary', async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const [{ total_products }] = await db('products').where({ is_active: true }).count('* as total_products');
+    
+    // Single query calculation for total_stock_value using latest cost from product_cost_history
+    const [result] = await db('products')
+      .where({ is_active: true })
+      .select(
+        db.raw(`COALESCE(SUM(current_stock * COALESCE((
+          SELECT unit_cost FROM product_cost_history pch
+          WHERE pch.product_id = products.id
+          ORDER BY effective_date DESC LIMIT 1
+        ), 0)), 0) as total_stock_value`)
+      );
+
+    const total_stock_value = Number(result?.total_stock_value || 0);
+
+    const [{ open_work_orders }] = await db('work_orders').where({ is_active: true }).whereIn('status', ['draft', 'open', 'in_progress']).count('* as open_work_orders');
+    const [{ critical_stock_count }] = await db('products').where({ is_active: true }).whereRaw('current_stock < min_stock_level').count('* as critical_stock_count');
+    const [{ pending_approvals }] = await db('stock_movements').where({ is_approved: false, is_rejected: false }).count('* as pending_approvals');
+
+    res.json({
+      total_products: Number(total_products),
+      total_stock_value,
+      open_work_orders: Number(open_work_orders),
+      critical_stock_count: Number(critical_stock_count),
+      pending_approvals: Number(pending_approvals)
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/recent-movements', async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const movements = await db('stock_movements')
+      .leftJoin('products', 'stock_movements.product_id', 'products.id')
+      .select('stock_movements.*', 'products.name as product_name', 'products.unit as product_unit', 'products.code as product_code')
+      .orderBy('stock_movements.created_at', 'desc')
+      .limit(10);
+    res.json(movements);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/work-order-stats', async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const stats = await db('work_orders').where({ is_active: true }).select('status').count('* as count').groupBy('status');
+    res.json(stats);
+  } catch (error) {
+    next(error);
+  }
+});
+
+export default router;
+import { Router, Response, NextFunction } from 'express';
+import db from '../db/connection';
+import { authenticate, requireAdmin, AuthRequest } from '../middleware/auth';
+import { validateRequest } from '../middleware/validateRequest';
+import { userUpdateSchema } from '../validation/schemas';
+
+const router = Router();
+router.use(authenticate);
+
+router.get('/', async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    let query = db('users').select('id', 'name', 'email', 'role', 'is_authorized_creator', 'is_active');
+    
+    if (req.user?.role === 'admin' && req.query.include_inactive === 'true') {
+      // Return all users including inactive
+    } else {
+      query = query.where({ is_active: true });
+    }
+
+    const users = await query;
+    res.json(users);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/:id', async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const user = await db('users').where({ id: req.params.id }).first();
+    if (!user) {
+      res.status(404).json({ error: 'Kullanıcı bulunamadı' });
+      return;
+    }
+    const { password_hash, ...safeUser } = user;
+    res.json(safeUser);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.put('/:id', requireAdmin, validateRequest(userUpdateSchema), async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    if (req.params.id === req.user?.id && (req.body.role !== undefined || req.body.is_authorized_creator !== undefined)) {
+      res.status(400).json({ error: 'Kendi rol veya yetkinizi değiştiremezsiniz' });
+      return;
+    }
+    if (req.body.email) {
+      const dup = await db('users').where({ email: req.body.email }).whereNot({ id: req.params.id }).first();
+      if (dup) {
+        res.status(400).json({ error: 'Bu e-posta adresi zaten kullanımda' });
+        return;
+      }
+    }
+
+    const { name, email, role, is_authorized_creator } = req.body;
+    const updateData: any = { updated_at: db.fn.now() };
+    if (name !== undefined) updateData.name = name;
+    if (email !== undefined) updateData.email = email;
+    if (role !== undefined) updateData.role = role;
+    if (is_authorized_creator !== undefined) updateData.is_authorized_creator = is_authorized_creator;
+    if (req.body.is_active !== undefined) updateData.is_active = req.body.is_active;
+
+    const count = await db('users').where({ id: req.params.id }).update(updateData);
+    if (count === 0) {
+      res.status(404).json({ error: 'Kullanıcı bulunamadı' });
+      return;
+    }
+    res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.delete('/:id', requireAdmin, async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    if (req.params.id === req.user?.id) {
+      res.status(400).json({ error: 'Kendi hesabınızı silemezsiniz' });
+      return;
+    }
+
+    await db('users').where({ id: req.params.id }).update({ 
+      is_active: false, 
+      deactivated_by: req.user?.id,
+      deactivated_at: db.fn.now(),
+      updated_at: db.fn.now() 
+    });
+    res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+export default router;
+import { Router, Response, NextFunction } from 'express';
+import { v4 as uuidv4 } from 'uuid';
+import db from '../db/connection';
+import { authenticate, AuthRequest, requireAdmin } from '../middleware/auth';
+import { validateRequest } from '../middleware/validateRequest';
+import { equipmentSchema, equipmentUpdateSchema } from '../validation/schemas';
+
+const router = Router();
+router.use(authenticate);
+
+// ──────────────────── CATALOG CRUD ────────────────────
+
+// GET /api/equipment — list with filters
+router.get('/', async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 20;
+    const offset = (page - 1) * limit;
+
+    let query = db('equipment');
+    
+    if (req.user?.role === 'admin' && req.query.include_inactive === 'true') {
+      // Admin requesting inactive items: do not filter by is_active
+    } else {
+      query = query.where({ is_active: true });
+    }
+
+    if (req.query.search) {
+      const s = `%${req.query.search}%`;
+      query.where((q) => q.where('name', 'like', s).orWhere('equipment_type', 'like', s).orWhere('serial_or_plate_no', 'like', s));
+    }
+    if (req.query.status) query.where({ status: req.query.status });
+    if (req.query.ownership) query.where({ ownership: req.query.ownership });
+
+    const [{ count }] = await query.clone().count('* as count');
+    const equipment = await query.limit(limit).offset(offset).orderBy('created_at', 'desc');
+
+    res.json({
+      data: equipment,
+      pagination: { total: Number(count), page, limit, pages: Math.ceil(Number(count) / limit) },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /api/equipment/mini — lightweight list for selects
+router.get('/mini', async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    let query = db('equipment');
+    
+    if (req.user?.role !== 'admin' || req.query.include_inactive !== 'true') {
+      query = query.where({ is_active: true });
+    }
+
+    const rows = await query
+      .select('id', 'name', 'equipment_type', 'ownership', 'status', 'default_supplier_name', 'default_rate_unit', 'default_rate_cost')
+      .orderBy('name');
+    res.json(rows);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /api/equipment/:id — detail + assignment history
+router.get('/:id', async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    let query = db('equipment').where({ id: req.params.id });
+    
+    if (req.user?.role !== 'admin' || req.query.include_inactive !== 'true') {
+      query = query.where({ is_active: true });
+    }
+
+    const item = await query.first();
+    if (!item) {
+      res.status(404).json({ error: 'Ekipman bulunamadı' });
+      return;
+    }
+
+    const assignments = await db('equipment_assignments')
+      .where({ equipment_id: req.params.id })
+      .leftJoin('work_orders', 'equipment_assignments.work_order_id', 'work_orders.id')
+      .leftJoin('users', 'equipment_assignments.created_by', 'users.id')
+      .select(
+        'equipment_assignments.*',
+        'work_orders.order_no',
+        'work_orders.title as work_order_title',
+        'users.name as creator_name'
+      )
+      .orderBy('equipment_assignments.start_date', 'desc');
+
+    const totalCost = assignments.reduce((sum: number, a: any) => sum + Number(a.cost || 0), 0);
+
+    res.json({ ...item, assignments, total_cost: totalCost });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/equipment — create catalog entry (admin)
+router.post('/', requireAdmin, validateRequest(equipmentSchema), async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const id = uuidv4();
+    await db('equipment').insert({ id, ...req.body });
+    const created = await db('equipment').where({ id }).first();
+    res.status(201).json(created);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// PUT /api/equipment/:id — update catalog entry (admin)
+router.put('/:id', requireAdmin, validateRequest(equipmentUpdateSchema), async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const count = await db('equipment')
+      .where({ id: req.params.id })
+      .update({ ...req.body, updated_at: db.fn.now() });
+    if (count === 0) {
+      res.status(404).json({ error: 'Ekipman bulunamadı' });
+      return;
+    }
+    res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// DELETE /api/equipment/:id — soft-delete (admin); block if active assignments
+router.delete('/:id', requireAdmin, async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const activeAssignment = await db('equipment_assignments')
+      .where({ equipment_id: req.params.id })
+      .whereNull('end_date')
+      .first();
+    if (activeAssignment) {
+      res.status(400).json({ error: 'Aktif ataması olan ekipman pasife alınamaz' });
+      return;
+    }
+    await db('equipment')
+      .where({ id: req.params.id })
+      .update({ 
+        is_active: false, 
+        deactivated_by: req.user?.id,
+        deactivated_at: db.fn.now(),
+        updated_at: db.fn.now() 
+      });
+    res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+export default router;
+import { Router, Response, NextFunction } from 'express';
+import { v4 as uuidv4 } from 'uuid';
+import db from '../db/connection';
+import { authenticate, AuthRequest, requireAdmin } from '../middleware/auth';
+import { validateRequest } from '../middleware/validateRequest';
+import { productSchema, productUpdateSchema, productCostSchema } from '../validation/schemas';
+
+const router = Router();
+router.use(authenticate);
+
+router.get('/', async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const offset = (page - 1) * limit;
+    
+    let query = db('products');
+    
+    if (req.user?.role === 'admin' && req.query.include_inactive === 'true') {
+      // Admin requesting inactive items: do not filter by is_active
+    } else {
+      query = query.where({ is_active: true });
+    }
+    
+    if (req.query.search) {
+      const search = `%${req.query.search}%`;
+      query.where(function() {
+        this.where('name', 'like', search).orWhere('code', 'like', search);
+      });
+    }
+
+    const [{ count }] = await query.clone().count('* as count');
+    const products = await query.limit(limit).offset(offset).orderBy('created_at', 'desc');
+
+    res.json({
+      data: products,
+      pagination: { total: Number(count), page, limit, pages: Math.ceil(Number(count) / limit) }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/alerts/critical-stock', async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const products = await db('products').whereRaw('current_stock < min_stock_level').andWhere({ is_active: true });
+    res.json(products);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/:id/costs', async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const rows = await db('product_cost_history')
+      .where({ product_id: req.params.id })
+      .orderBy('effective_date', 'desc');
+    res.json(rows);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/:id/movements', async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const rows = await db('stock_movements')
+      .where({ 'stock_movements.product_id': req.params.id })
+      .leftJoin('users as creator', 'stock_movements.created_by', 'creator.id')
+      .select('stock_movements.*', 'creator.name as creator_name')
+      .orderBy('stock_movements.created_at', 'desc');
+    res.json(rows);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/:id', async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    let query = db('products').where({ id: req.params.id });
+    
+    if (req.user?.role !== 'admin' || req.query.include_inactive !== 'true') {
+      query = query.where({ is_active: true });
+    }
+    
+    const product = await query.first();
+    if (!product) {
+      res.status(404).json({ error: 'Ürün bulunamadı' });
+      return;
+    }
+    const costHistory = await db('product_cost_history').where({ product_id: product.id }).orderBy('effective_date', 'desc');
+    res.json({ ...product, cost_history: costHistory });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/', requireAdmin, validateRequest(productSchema), async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { initial_cost, ...productData } = req.body;
+    const id = uuidv4();
+
+    await db.transaction(async (trx) => {
+      await trx('products').insert({ id, ...productData });
+      if (typeof initial_cost === 'number' && initial_cost > 0) {
+        await trx('product_cost_history').insert({
+          id: uuidv4(),
+          product_id: id,
+          unit_cost: initial_cost,
+          effective_date: new Date().toISOString().slice(0, 10),
+          notes: 'Açılış maliyeti'
+        });
+      }
+    });
+
+    const product = await db('products').where({ id }).first();
+    res.status(201).json(product);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.put('/:id', requireAdmin, validateRequest(productUpdateSchema), async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const count = await db('products').where({ id: req.params.id }).update({ ...req.body, updated_at: db.fn.now() });
+    if (count === 0) {
+      res.status(404).json({ error: 'Ürün bulunamadı' });
+      return;
+    }
+    res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.delete('/:id', requireAdmin, async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    await db('products').where({ id: req.params.id }).update({ 
+      is_active: false,
+      deactivated_by: req.user?.id,
+      deactivated_at: db.fn.now(),
+      updated_at: db.fn.now() 
+    });
+    res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/:id/cost', requireAdmin, validateRequest(productCostSchema), async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const id = uuidv4();
+    await db('product_cost_history').insert({ id, product_id: req.params.id, ...req.body });
+    res.status(201).json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.put('/:id/costs/:costId', requireAdmin, validateRequest(productCostSchema), async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const latest = await db('product_cost_history')
+      .where({ product_id: req.params.id })
+      .orderBy('effective_date', 'desc')
+      .orderBy('created_at', 'desc')
+      .first();
+    if (!latest || latest.id !== req.params.costId) {
+      res.status(400).json({ error: 'Sadece en güncel maliyet kaydı düzenlenebilir' });
+      return;
+    }
+    await db('product_cost_history').where({ id: req.params.costId }).update(req.body);
+    res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+export default router;
+import { Router, Response, NextFunction } from 'express';
+import db from '../db/connection';
+import { authenticate, AuthRequest } from '../middleware/auth';
+
+const router = Router();
+router.use(authenticate);
+
+router.get('/stock-movements', async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { start_date, end_date } = req.query;
+    const query = db('stock_movements')
+      .join('products', 'stock_movements.product_id', 'products.id')
+      .select('products.name', 'products.code', 'stock_movements.movement_type')
+      .sum('stock_movements.quantity as total_quantity')
+      .where('stock_movements.is_approved', true)
+      .groupBy('products.id', 'stock_movements.movement_type');
+
+    if (start_date) query.where('stock_movements.created_at', '>=', start_date as string);
+    if (end_date) query.where('stock_movements.created_at', '<=', `${end_date} 23:59:59`);
+
+    const results = await query;
+    res.json(results);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/work-order-costs/:id', async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const [matResult] = await db('work_order_items as wi')
+      .where({ 'wi.work_order_id': req.params.id })
+      .select(
+        db.raw(`COALESCE(SUM(wi.used_quantity * COALESCE((
+          SELECT unit_cost FROM product_cost_history pch
+          WHERE pch.product_id = wi.product_id
+          ORDER BY effective_date DESC LIMIT 1
+        ), 0)), 0) as material_cost`)
+      );
+
+    const materialCost = Number(matResult?.material_cost || 0);
+
+    const labor = await db('labor_logs').where({ work_order_id: req.params.id });
+    const equipment = await db('equipment_assignments').where({ work_order_id: req.params.id });
+
+    const laborCost = labor.reduce((sum, log) => sum + (log.hours_worked * log.hourly_rate), 0);
+    const equipmentCost = equipment.reduce((sum, log) => sum + Number(log.cost || 0), 0);
+
+    res.json({
+      work_order_id: req.params.id,
+      material_cost: materialCost,
+      labor_cost: laborCost,
+      equipment_cost: equipmentCost,
+      total_cost: materialCost + laborCost + equipmentCost
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/cost-by-client', async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { start_date, end_date } = req.query;
+    const bindings: any[] = [];
+    let dateClause = '';
+    
+    if (start_date) {
+      dateClause += ' AND wo.created_at >= ?';
+      bindings.push(start_date);
+    }
+    if (end_date) {
+      dateClause += ' AND wo.created_at <= ?';
+      bindings.push(`${end_date} 23:59:59`);
+    }
+
+    const results = await db.raw(`
+      SELECT wo.client_type,
+             COUNT(DISTINCT wo.id) AS order_count,
+             COALESCE(SUM(mat.material_cost), 0) +
+             COALESCE(SUM(lab.labor_cost), 0) +
+             COALESCE(SUM(eq.equipment_cost), 0) AS total_cost
+      FROM work_orders wo
+      LEFT JOIN (
+        SELECT wi.work_order_id,
+               SUM(wi.used_quantity * COALESCE((
+                 SELECT unit_cost FROM product_cost_history pch
+                 WHERE pch.product_id = wi.product_id
+                 ORDER BY effective_date DESC LIMIT 1), 0)) AS material_cost
+        FROM work_order_items wi GROUP BY wi.work_order_id
+      ) mat ON mat.work_order_id = wo.id
+      LEFT JOIN (
+        SELECT work_order_id, SUM(hours_worked * hourly_rate) AS labor_cost
+        FROM labor_logs GROUP BY work_order_id
+      ) lab ON lab.work_order_id = wo.id
+      LEFT JOIN (
+        SELECT work_order_id, SUM(cost) AS equipment_cost
+        FROM equipment_assignments GROUP BY work_order_id
+      ) eq ON eq.work_order_id = wo.id
+      WHERE wo.is_active = 1 ${dateClause}
+      GROUP BY wo.client_type
+    `, bindings);
+    
+    res.json(results || []);
+  } catch (error) {
+    next(error);
+  }
+});
+
+export default router;
+import { Router, Response, NextFunction } from 'express';
+import { v4 as uuidv4 } from 'uuid';
+import db from '../db/connection';
+import { authenticate, requireAdmin, AuthRequest } from '../middleware/auth';
+import { validateRequest } from '../middleware/validateRequest';
+import { stockMovementSchema } from '../validation/schemas';
+
+const router = Router();
+router.use(authenticate);
+
+router.get('/', async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const offset = (page - 1) * limit;
+
+    const query = db('stock_movements')
+      .leftJoin('products', 'stock_movements.product_id', 'products.id')
+      .leftJoin('users as creator', 'stock_movements.created_by', 'creator.id')
+      .leftJoin('users as approver', 'stock_movements.approved_by', 'approver.id')
+      .select(
+        'stock_movements.*',
+        'products.name as product_name',
+        'products.code as product_code',
+        'products.unit as product_unit',
+        'creator.name as creator_name',
+        'approver.name as approver_name'
+      );
+    
+    if (req.query.movement_type) query.where('stock_movements.movement_type', req.query.movement_type);
+    if (req.query.is_approved !== undefined) query.where('stock_movements.is_approved', req.query.is_approved === 'true');
+    if (req.query.is_rejected !== undefined) query.where('stock_movements.is_rejected', req.query.is_rejected === 'true');
+
+    const [{ count }] = await query.clone().count('stock_movements.id as count');
+    const movements = await query.limit(limit).offset(offset).orderBy('stock_movements.created_at', 'desc');
+
+    res.json({
+      data: movements,
+      pagination: { total: Number(count), page, limit, pages: Math.ceil(Number(count) / limit) }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/', validateRequest(stockMovementSchema), async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { product_id, work_order_id, movement_type, quantity, notes } = req.body;
+    
+    const product = await db('products').where({ id: product_id, is_active: true }).first();
+    if (!product) {
+      res.status(404).json({ error: 'Ürün bulunamadı' });
+      return;
+    }
+
+    if (work_order_id) {
+      const wo = await db('work_orders').where({ id: work_order_id, is_active: true }).first();
+      if (!wo) {
+        res.status(404).json({ error: 'İş emri bulunamadı' });
+        return;
+      }
+      if (wo.approval_status === 'rejected') {
+        res.status(400).json({ error: 'Reddedilmiş iş emri için çıkış talebi oluşturulamaz' });
+        return;
+      }
+    }
+    
+    const id = uuidv4();
+    await db('stock_movements').insert({
+      id, product_id, work_order_id, movement_type, quantity, notes,
+      is_approved: false, created_by: req.user?.id
+    });
+    res.status(201).json({ success: true, message: 'Hareket onaya gönderildi' });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/:id/approve', requireAdmin, async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const movement = await db('stock_movements').where({ id: req.params.id }).first();
+    if (!movement) {
+      res.status(404).json({ error: 'Hareket bulunamadı' });
+      return;
+    }
+    if (movement.is_approved) {
+      res.status(400).json({ error: 'Bu hareket zaten onaylanmış' });
+      return;
+    }
+    if (movement.is_rejected) {
+      res.status(400).json({ error: 'Reddedilmiş hareket onaylanamaz' });
+      return;
+    }
+    await db.transaction(async (trx) => {
+      const product = await trx('products').where({ id: movement.product_id }).first();
+      if (!product) {
+        throw new Error('Ürün bulunamadı');
+      }
+
+      if (movement.movement_type === 'OUT') {
+        if (product.current_stock < movement.quantity) {
+          throw new Error('Yetersiz stok');
+        }
+        if (movement.work_order_id) {
+          const item = await trx('work_order_items')
+            .where({ work_order_id: movement.work_order_id, product_id: movement.product_id })
+            .first();
+          if (item) {
+            const cap = item.approved_quantity ?? item.requested_quantity;
+            const newUsed = Number(item.used_quantity) + Number(movement.quantity);
+            if (newUsed > Number(cap)) {
+              throw new Error('Onaylanan miktar aşılıyor');
+            }
+          }
+        }
+        await trx('products').where({ id: movement.product_id }).decrement('current_stock', movement.quantity);
+        if (movement.work_order_id) {
+          await trx('work_order_items')
+            .where({ work_order_id: movement.work_order_id, product_id: movement.product_id })
+            .increment('used_quantity', movement.quantity);
+        }
+      } else if (movement.movement_type === 'IN') {
+        await trx('products').where({ id: movement.product_id }).increment('current_stock', movement.quantity);
+      } else {
+        throw new Error('Geçersiz işlem');
+      }
+
+      await trx('stock_movements').where({ id: movement.id }).update({
+        is_approved: true,
+        approved_by: req.user?.id,
+        approved_at: trx.fn.now()
+      });
+    });
+    res.json({ success: true });
+  } catch (error: any) {
+    if (error.message === 'Yetersiz stok') {
+      res.status(400).json({ error: 'Onaylamak için yetersiz stok. İşlem reddedildi.' });
+    } else if (error.message === 'Onaylanan miktar aşılıyor') {
+      res.status(400).json({ error: 'Bu hareket onaylanırsa kullanılan miktar, onaylanan miktarı aşacak. İşlem reddedildi.' });
+    } else if (error.message === 'Ürün bulunamadı' || error.message === 'Geçersiz işlem') {
+      res.status(400).json({ error: error.message });
+    } else {
+      next(error);
+    }
+  }
+});
+
+router.post('/:id/reject', requireAdmin, async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const movement = await db('stock_movements').where({ id: req.params.id }).first();
+    if (!movement) { res.status(404).json({ error: 'Hareket bulunamadı' }); return; }
+    if (movement.is_approved) { res.status(400).json({ error: 'Bu hareket zaten onaylanmış' }); return; }
+    if (movement.is_rejected) { res.status(400).json({ error: 'Bu hareket zaten reddedilmiş' }); return; }
+    await db('stock_movements').where({ id: movement.id }).update({
+      is_rejected: true, rejected_by: req.user?.id, rejected_at: db.fn.now(),
+    });
+    res.json({ success: true });
+  } catch (error) { next(error); }
+});
+
+export default router;
+import { Router, Response, NextFunction } from 'express';
+import { v4 as uuidv4 } from 'uuid';
+import db from '../db/connection';
+import { authenticate, requireAuthorizedCreator, requireAdmin, AuthRequest } from '../middleware/auth';
+import { validateRequest } from '../middleware/validateRequest';
+import { 
+  workOrderSchema, 
+  workOrderUpdateSchema, 
+  workOrderItemSchema, 
+  workOrderItemUpdateSchema, 
+  laborLogSchema, 
+  equipmentLogSchema,
+  equipmentAssignmentSchema,
+  equipmentAssignmentUpdateSchema
+} from '../validation/schemas';
+
+const router = Router();
+router.use(authenticate);
+
+async function generateOrderNo() {
+  const year = new Date().getFullYear();
+  const latest = await db('work_orders').where('order_no', 'like', `IE-${year}-%`).orderBy('order_no', 'desc').first();
+  let num = 1;
+  if (latest) {
+    const parts = latest.order_no.split('-');
+    num = parseInt(parts[2]) + 1;
+  }
+  return `IE-${year}-${num.toString().padStart(3, '0')}`;
+}
+
+async function insertWithOrderNo(body: any, userId?: string, tries = 3): Promise<any> {
+  for (let i = 0; i < tries; i++) {
+    try {
+      const id = uuidv4();
+      const order_no = await generateOrderNo();
+      await db('work_orders').insert({
+        id,
+        order_no,
+        created_by: userId,
+        ...body
+      });
+      return await db('work_orders').where({ id }).first();
+    } catch (e: any) {
+      if (i === tries - 1 || !/unique/i.test(e?.message ?? '')) throw e;
+    }
+  }
+  throw new Error('order_no üretilemedi');
+}
+
+router.get('/', async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const offset = (page - 1) * limit;
+
+    let query = db('work_orders')
+      .leftJoin('users as assignee', 'work_orders.assigned_to', 'assignee.id')
+      .leftJoin('users as creator', 'work_orders.created_by', 'creator.id')
+      .select(
+        'work_orders.*',
+        'assignee.name as assignee_name',
+        'creator.name as creator_name'
+      );
+    
+    if (req.user?.role === 'admin' && req.query.include_inactive === 'true') {
+      // Admin requesting inactive items: do not filter by is_active
+    } else {
+      query = query.where({ 'work_orders.is_active': true });
+    }
+    
+    if (req.query.search) {
+      const s = `%${req.query.search}%`;
+      query.where((q) => q.where('work_orders.order_no', 'like', s).orWhere('work_orders.title', 'like', s));
+    }
+    if (req.query.status) query.where({ 'work_orders.status': req.query.status });
+    if (req.query.approval_status) query.where({ 'work_orders.approval_status': req.query.approval_status });
+    if (req.query.client_type) query.where({ 'work_orders.client_type': req.query.client_type });
+
+    const [{ count }] = await query.clone().count('work_orders.id as count');
+    const orders = await query.limit(limit).offset(offset).orderBy('work_orders.created_at', 'desc');
+
+    res.json({
+      data: orders,
+      pagination: { total: Number(count), page, limit, pages: Math.ceil(Number(count) / limit) }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/:id', async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    let query = db('work_orders')
+      .leftJoin('users as assignee', 'work_orders.assigned_to', 'assignee.id')
+      .leftJoin('users as creator', 'work_orders.created_by', 'creator.id')
+      .select(
+        'work_orders.*',
+        'assignee.name as assignee_name',
+        'creator.name as creator_name'
+      )
+      .where({ 'work_orders.id': req.params.id });
+      
+    if (req.user?.role !== 'admin' || req.query.include_inactive !== 'true') {
+      query = query.where({ 'work_orders.is_active': true });
+    }
+
+    const order = await query.first();
+
+    if (!order) {
+      res.status(404).json({ error: 'İş emri bulunamadı' });
+      return;
+    }
+    const items = await db('work_order_items')
+      .where({ work_order_id: order.id })
+      .leftJoin('products', 'work_order_items.product_id', 'products.id')
+      .select(
+        'work_order_items.*',
+        'products.name as product_name',
+        'products.code as product_code',
+        'products.unit as product_unit'
+      );
+    const labor = await db('labor_logs')
+      .where({ work_order_id: order.id })
+      .leftJoin('users', 'labor_logs.user_id', 'users.id')
+      .select('labor_logs.*', 'users.name as user_name');
+    const equipment = await db('equipment_logs').where({ work_order_id: order.id });
+    const equipmentAssignments = await db('equipment_assignments')
+      .where({ 'equipment_assignments.work_order_id': order.id })
+      .leftJoin('equipment', 'equipment_assignments.equipment_id', 'equipment.id')
+      .leftJoin('users', 'equipment_assignments.created_by', 'users.id')
+      .select(
+        'equipment_assignments.*',
+        'equipment.name as equipment_name',
+        'equipment.equipment_type',
+        'equipment.ownership',
+        'equipment.serial_or_plate_no',
+        'users.name as creator_name'
+      )
+      .orderBy('equipment_assignments.start_date', 'desc');
+
+    res.json({ ...order, items, labor_logs: labor, equipment_logs: equipment, equipment_assignments: equipmentAssignments });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/', requireAuthorizedCreator, validateRequest(workOrderSchema), async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const newOrder = await insertWithOrderNo(req.body, req.user?.id);
+    res.status(201).json(newOrder);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.put('/:id', requireAuthorizedCreator, validateRequest(workOrderUpdateSchema), async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const order = await db('work_orders').where({ id: req.params.id }).first();
+    if (!order) {
+      res.status(404).json({ error: 'İş emri bulunamadı' });
+      return;
+    }
+    const isPrivileged = req.user?.role === 'admin' || req.user?.role === 'manager';
+    if (!isPrivileged && order.created_by !== req.user?.id) {
+      res.status(403).json({ error: 'Bu iş emrini güncelleme yetkiniz yok' });
+      return;
+    }
+
+    await db('work_orders').where({ id: req.params.id }).update({ ...req.body, updated_at: db.fn.now() });
+    res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/:id/approve', requireAdmin, async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const order = await db('work_orders').where({ id: req.params.id }).first();
+    if (!order) {
+      res.status(404).json({ error: 'İş emri bulunamadı' });
+      return;
+    }
+    if (order.approval_status !== 'pending') {
+      res.status(400).json({ error: 'Bu iş emri zaten sonuçlanmış' });
+      return;
+    }
+
+    await db('work_orders').where({ id: req.params.id }).update({ 
+      approval_status: 'approved', 
+      approved_by: req.user?.id, 
+      approved_at: db.fn.now(), 
+      updated_at: db.fn.now() 
+    });
+    res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/:id/reject', requireAdmin, async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const order = await db('work_orders').where({ id: req.params.id }).first();
+    if (!order) {
+      res.status(404).json({ error: 'İş emri bulunamadı' });
+      return;
+    }
+    if (order.approval_status !== 'pending') {
+      res.status(400).json({ error: 'Bu iş emri zaten sonuçlanmış' });
+      return;
+    }
+
+    await db('work_orders').where({ id: req.params.id }).update({ 
+      approval_status: 'rejected', 
+      updated_at: db.fn.now() 
+    });
+    res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+async function assertOrderWritable(req: AuthRequest, res: Response): Promise<boolean> {
+  const order = await db('work_orders').where({ id: req.params.id }).first();
+  if (!order) {
+    res.status(404).json({ error: 'İş emri bulunamadı' });
+    return false;
+  }
+  if (order.approval_status === 'rejected') {
+    res.status(400).json({ error: 'Reddedilmiş iş emrine kayıt eklenemez' });
+    return false;
+  }
+  const isPrivileged = req.user?.role === 'admin' || req.user?.role === 'manager';
+  const canWrite = isPrivileged || order.created_by === req.user?.id || order.assigned_to === req.user?.id;
+  if (!canWrite) {
+    res.status(403).json({ error: 'Bu iş emrine kayıt ekleme veya güncelleme yetkiniz yok' });
+    return false;
+  }
+  return true;
+}
+
+router.post('/:id/items', validateRequest(workOrderItemSchema), async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    if (!(await assertOrderWritable(req, res))) return;
+    const existing = await db('work_order_items')
+      .where({ work_order_id: req.params.id, product_id: req.body.product_id })
+      .first();
+    if (existing) {
+      res.status(400).json({ error: 'Bu üründen zaten bir talep satırı var, miktarı düzenleyin' });
+      return;
+    }
+    const id = uuidv4();
+    try {
+      await db('work_order_items').insert({ id, work_order_id: req.params.id, ...req.body });
+    } catch (e: any) {
+      if (/unique/i.test(e?.message ?? '')) {
+        res.status(400).json({ error: 'Bu üründen zaten bir talep satırı var, miktarı düzenleyin' });
+        return;
+      }
+      throw e;
+    }
+    res.status(201).json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.put('/:id/items/:itemId', validateRequest(workOrderItemUpdateSchema), async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    if (!(await assertOrderWritable(req, res))) return;
+
+    // NEW: only admin/manager can set approved_quantity
+    if (req.body.approved_quantity != null) {
+      const isPrivileged = req.user?.role === 'admin' || req.user?.role === 'manager';
+      if (!isPrivileged) {
+        res.status(403).json({ error: 'Onaylı miktarı sadece yönetici belirleyebilir' });
+        return;
+      }
+    }
+
+    const item = await db('work_order_items').where({ id: req.params.itemId, work_order_id: req.params.id }).first();
+    if (!item) {
+      res.status(404).json({ error: 'Kalem bulunamadı' });
+      return;
+    }
+    if (req.body.approved_quantity != null && Number(req.body.approved_quantity) > Number(item.requested_quantity)) {
+      res.status(400).json({ error: 'Onaylanan miktar talep edileni aşamaz' });
+      return;
+    }
+
+    if (req.body.used_quantity != null) {
+      const cap = req.body.approved_quantity ?? item.approved_quantity ?? item.requested_quantity;
+      if (Number(req.body.used_quantity) > Number(cap)) {
+        res.status(400).json({ error: 'Kullanılan miktar onaylanan (veya talep edilen) miktarı aşamaz' });
+        return;
+      }
+    }
+
+    // İLK ONAY: bekleyen OUT hareketini otomatik oluştur (tek kaynak ilkesi)
+    if (req.body.approved_quantity != null && item.approved_quantity == null) {
+      await db('stock_movements').insert({
+        id: uuidv4(),
+        product_id: item.product_id,
+        work_order_id: req.params.id,
+        movement_type: 'OUT',
+        quantity: req.body.approved_quantity,
+        is_approved: false,
+        created_by: req.user?.id,
+        notes: 'İş emri malzeme onayı (otomatik talep)',
+      });
+    }
+
+    await db('work_order_items').where({ id: req.params.itemId }).update(req.body);
+    res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/:id/labor', validateRequest(laborLogSchema), async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    if (!(await assertOrderWritable(req, res))) return;
+    const id = uuidv4();
+    await db('labor_logs').insert({ id, work_order_id: req.params.id, ...req.body });
+    res.status(201).json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/:id/equipment', validateRequest(equipmentLogSchema), async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    if (!(await assertOrderWritable(req, res))) return;
+    const id = uuidv4();
+    await db('equipment_logs').insert({ id, work_order_id: req.params.id, ...req.body });
+    res.status(201).json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ──── NEW: Equipment Assignment endpoints (transaction-based) ────
+
+router.post('/:id/equipment-assignments', validateRequest(equipmentAssignmentSchema), async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    if (!(await assertOrderWritable(req, res))) return;
+    const { equipment_id } = req.body;
+
+    await db.transaction(async (trx) => {
+      const eq = await trx('equipment').where({ id: equipment_id }).first();
+      if (!eq) {
+        res.status(404).json({ error: 'Ekipman bulunamadı' });
+        return;
+      }
+
+      // field_worker cannot assign in_use equipment; admin/manager gets warning on frontend
+      if (eq.status === 'in_use' && req.user?.role === 'field_worker') {
+        res.status(400).json({ error: 'Bu ekipman şu anda kullanımda, yöneticinize başvurun' });
+        return;
+      }
+
+      // NEW: sanity-check submitted cost against the catalog default rate
+      const { rate_unit, quantity_units, cost } = req.body;
+      if (rate_unit !== 'fixed' && quantity_units != null && eq.default_rate_cost != null) {
+        const expected = Number(quantity_units) * Number(eq.default_rate_cost);
+        const submitted = Number(cost);
+        const tolerance = Math.max(expected * 0.05, 1); // 5% or 1 unit, whichever is bigger
+        if (Math.abs(submitted - expected) > tolerance) {
+          res.status(400).json({
+            error: `Girilen maliyet (${submitted}) beklenen maliyetten (${expected.toFixed(2)}) çok farklı. Kontrol edin veya farklı bir tedarikçi/fiyat notu ekleyin.`,
+            expected_cost: expected,
+          });
+          return; // IMPORTANT: return early to prevent insertion
+        }
+      }
+
+      const id = uuidv4();
+      await trx('equipment_assignments').insert({
+        id,
+        work_order_id: req.params.id,
+        created_by: req.user?.id,
+        ...req.body,
+      });
+
+      // Update equipment status to in_use (if not end_date provided = still active)
+      if (!req.body.end_date) {
+        await trx('equipment').where({ id: equipment_id }).update({ status: 'in_use', updated_at: db.fn.now() });
+      }
+
+      res.status(201).json({ success: true, id });
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.put('/:id/equipment-assignments/:assignmentId', validateRequest(equipmentAssignmentUpdateSchema), async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    if (!(await assertOrderWritable(req, res))) return;
+
+    await db.transaction(async (trx) => {
+      const assignment = await trx('equipment_assignments')
+        .where({ id: req.params.assignmentId, work_order_id: req.params.id })
+        .first();
+      if (!assignment) {
+        res.status(404).json({ error: 'Atama bulunamadı' });
+        return;
+      }
+
+      // Double-return protection
+      if (req.body.end_date && assignment.end_date) {
+        res.status(400).json({ error: 'Bu atama zaten iade edilmiş' });
+        return;
+      }
+
+      await trx('equipment_assignments')
+        .where({ id: req.params.assignmentId })
+        .update(req.body);
+
+      // If returning (end_date set), check if equipment has any remaining open assignments
+      if (req.body.end_date) {
+        const stillOpen = await trx('equipment_assignments')
+          .where({ equipment_id: assignment.equipment_id })
+          .whereNull('end_date')
+          .whereNot({ id: req.params.assignmentId })
+          .first();
+        if (!stillOpen) {
+          await trx('equipment').where({ id: assignment.equipment_id }).update({ status: 'available', updated_at: db.fn.now() });
+        }
+      }
+
+      res.json({ success: true });
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.delete('/:id/equipment-assignments/:assignmentId', async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    if (!(await assertOrderWritable(req, res))) return;
+
+    await db.transaction(async (trx) => {
+      const assignment = await trx('equipment_assignments')
+        .where({ id: req.params.assignmentId, work_order_id: req.params.id })
+        .first();
+      if (!assignment) {
+        res.status(404).json({ error: 'Atama bulunamadı' });
+        return;
+      }
+
+      const wasOpen = assignment.end_date === null;
+      await trx('equipment_assignments').where({ id: req.params.assignmentId }).del();
+
+      // State transition: if deleted assignment was open, check remaining
+      if (wasOpen) {
+        const stillOpen = await trx('equipment_assignments')
+          .where({ equipment_id: assignment.equipment_id })
+          .whereNull('end_date')
+          .first();
+        if (!stillOpen) {
+          await trx('equipment').where({ id: assignment.equipment_id }).update({ status: 'available', updated_at: db.fn.now() });
+        }
+      }
+
+      res.json({ success: true });
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ──── End Equipment Assignments ────
+
+router.delete('/:id/items/:itemId', async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    if (!(await assertOrderWritable(req, res))) return;
+    const item = await db('work_order_items').where({ id: req.params.itemId, work_order_id: req.params.id }).first();
+    if (!item) { res.status(404).json({ error: 'Kalem bulunamadı' }); return; }
+    if (Number(item.used_quantity) > 0) { res.status(400).json({ error: 'Kullanılmış malzeme kalemi silinemez' }); return; }
+    // NOTE: deleting an item while its auto-created OUT movement is still pending would
+    // leave an orphan that bypasses the cap check at approval time (item lookup returns
+    // undefined → cap block skipped → stock decrements invisibly). Block until the
+    // movement is resolved on the Stock page. Rejected movements of deleted items remain
+    // in history as inert "ghost" rows (is_rejected=true forever, never touch stock) —
+    // intentional; do not auto-clean without a data-migration decision.
+    const pendingMov = await db('stock_movements')
+      .where({ work_order_id: req.params.id, product_id: item.product_id })
+      .where({ is_approved: false })
+      .where({ is_rejected: false })
+      .first();
+    if (pendingMov) {
+      res.status(400).json({ error: 'Bu kalem için bekleyen stok hareketi var. Önce Stok Hareketleri sayfasından onaylayın veya reddedin.' });
+      return;
+    }
+    await db('work_order_items').where({ id: item.id }).del();
+    res.json({ success: true });
+  } catch (error) { next(error); }
+});
+
+router.delete('/:id/labor/:logId', async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    if (!(await assertOrderWritable(req, res))) return;
+    const log = await db('labor_logs').where({ id: req.params.logId, work_order_id: req.params.id }).first();
+    if (!log) { res.status(404).json({ error: 'Kayıt bulunamadı' }); return; }
+    await db('labor_logs').where({ id: log.id }).del();
+    res.json({ success: true });
+  } catch (error) { next(error); }
+});
+
+router.delete('/:id/equipment/:logId', async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    if (!(await assertOrderWritable(req, res))) return;
+    const log = await db('equipment_logs').where({ id: req.params.logId, work_order_id: req.params.id }).first();
+    if (!log) { res.status(404).json({ error: 'Kayıt bulunamadı' }); return; }
+    await db('equipment_logs').where({ id: log.id }).del();
+    res.json({ success: true });
+  } catch (error) { next(error); }
+});
+
+router.delete('/:id', requireAdmin, async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const order = await db('work_orders').where({ id: req.params.id }).first();
+    if (!order) { res.status(404).json({ error: 'İş emri bulunamadı' }); return; }
+    await db('work_orders').where({ id: req.params.id }).update({ 
+      is_active: false, 
+      deactivated_by: req.user?.id, 
+      deactivated_at: db.fn.now(), 
+      updated_at: db.fn.now() 
+    });
+    res.json({ success: true });
+  } catch (error) { next(error); }
+});
+
+export default router;
+import dotenv from 'dotenv';
+dotenv.config();
+
+import app from './app';
+import db from './db/connection';
+import cron from 'node-cron';
+
+const PORT = process.env.PORT || 3001;
+
+async function start() {
+  try {
+    // Attempt basic query to verify connection
+    await db.raw('SELECT 1');
+    console.log('Database connected.');
+
+    // Cron job for daily critical stock check
+    cron.schedule('0 9 * * *', async () => {
+      try {
+        console.log('[CRON] Günlük kritik stok kontrolü başlatıldı...');
+        const critical = await db('products').whereRaw('current_stock < min_stock_level').andWhere({ is_active: true });
+        if (critical.length > 0) {
+          const list = critical.map((p: any) => `${p.code} (${p.name}: ${p.current_stock}/${p.min_stock_level} ${p.unit})`).join(', ');
+          console.warn(`[CRON UYARI] ${critical.length} ürün kritik stok seviyesinin altında: ${list}`);
+        } else {
+          console.log('[CRON] Tüm ürünlerin stok seviyeleri yeterli.');
+        }
+      } catch (err) {
+        console.error('[CRON HATA] Kritik stok kontrolü başarısız:', err);
+      }
+    });
+
+    app.listen(PORT, () => {
+      console.log(`Server running on port ${PORT}`);
+    });
+  } catch (error) {
+    console.error('Failed to start server:', error);
+    process.exit(1);
+  }
+}
+
+start();
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  password_hash: string;
+  role: 'admin' | 'manager' | 'field_worker';
+  is_authorized_creator: boolean;
+  is_active: boolean;
+  created_at: string | Date;
+  updated_at: string | Date;
+}
+
+export interface Product {
+  id: string;
+  code: string;
+  name: string;
+  unit: string;
+  current_stock: number;
+  min_stock_level: number;
+  is_active: boolean;
+  created_at: string | Date;
+  updated_at: string | Date;
+}
+
+export interface ProductCostHistory {
+  id: string;
+  product_id: string;
+  unit_cost: number;
+  effective_date: string | Date;
+  notes?: string;
+  created_at: string | Date;
+}
+
+export interface WorkOrder {
+  id: string;
+  order_no: string;
+  title: string;
+  description?: string;
+  client_type: 'izban' | 'belediye' | 'kurum_ici' | 'diger';
+  status: 'draft' | 'open' | 'in_progress' | 'completed' | 'cancelled';
+  approval_status: 'pending' | 'approved' | 'rejected';
+  created_by: string;
+  assigned_to?: string;
+  approved_by?: string;
+  approved_at?: string | Date;
+  external_ref?: string;
+  is_active: boolean;
+  created_at: string | Date;
+  updated_at: string | Date;
+}
+
+export interface WorkOrderItem {
+  id: string;
+  work_order_id: string;
+  product_id: string;
+  requested_quantity: number;
+  approved_quantity?: number;
+  used_quantity: number;
+  created_at: string | Date;
+}
+
+export interface StockMovement {
+  id: string;
+  product_id: string;
+  work_order_id?: string;
+  movement_type: 'IN' | 'OUT';
+  quantity: number;
+  is_approved: boolean;
+  approved_by?: string;
+  approved_at?: string | Date;
+  notes?: string;
+  supplier_name?: string;
+  invoice_no?: string;
+  is_rejected?: boolean;
+  rejected_by?: string;
+  rejected_at?: string | Date;
+  created_by: string;
+  created_at: string | Date;
+}
+
+export interface LaborLog {
+  id: string;
+  work_order_id: string;
+  user_id: string;
+  hours_worked: number;
+  hourly_rate: number;
+  date: string | Date;
+  notes?: string;
+  rate_unit?: 'hourly' | 'daily';
+  created_at: string | Date;
+}
+
+export interface EquipmentLog {
+  id: string;
+  work_order_id: string;
+  equipment_type: string;
+  description?: string;
+  specs?: string;
+  rental_cost: number;
+  date: string | Date;
+  notes?: string;
+  created_at: string | Date;
+}
+
+export interface Equipment {
+  id: string;
+  name: string;
+  equipment_type: string;
+  ownership: 'owned' | 'rented';
+  status: 'available' | 'in_use' | 'maintenance';
+  specs?: string;
+  serial_or_plate_no?: string;
+  default_supplier_name?: string;
+  default_rate_unit?: 'hourly' | 'daily' | 'fixed';
+  default_rate_cost?: number;
+  is_active: boolean;
+  created_at: string | Date;
+  updated_at: string | Date;
+}
+
+export interface EquipmentAssignment {
+  id: string;
+  equipment_id: string;
+  work_order_id: string;
+  start_date: string | Date;
+  end_date?: string | Date;
+  supplier_name?: string;
+  rate_unit: 'hourly' | 'daily' | 'fixed';
+  quantity_units?: number;
+  cost: number;
+  notes?: string;
+  created_by: string;
+  created_at: string | Date;
+}
+import { z } from 'zod';
+
+export const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(6),
+});
+
+export const registerSchema = z.object({
+  name: z.string().min(2),
+  email: z.string().email(),
+  password: z.string().min(6),
+  role: z.enum(['admin', 'manager', 'field_worker']).optional(),
+  is_authorized_creator: z.boolean().optional(),
+});
+
+export const userUpdateSchema = z.object({
+  name: z.string().min(2).optional(),
+  email: z.string().email().optional(),
+  role: z.enum(['admin', 'manager', 'field_worker']).optional(),
+  is_authorized_creator: z.boolean().optional(),
+  is_active: z.boolean().optional(),
+});
+
+export const profileUpdateSchema = z.object({
+  first_name: z.string().min(1, 'Ad zorunludur'),
+  last_name: z.string().min(1, 'Soyad zorunludur'),
+  email: z.string().email(),
+  current_password: z.string().min(6),
+});
+
+export const passwordChangeSchema = z.object({
+  current_password: z.string().min(6),
+  new_password: z.string().min(6, 'Şifre en az 6 karakter olmalıdır'),
+});
+
+export const productSchema = z.object({
+  code: z.string().min(1),
+  name: z.string().min(1),
+  unit: z.string().min(1),
+  min_stock_level: z.number().min(0),
+  initial_cost: z.number().min(0).optional(),
+});
+
+export const productUpdateSchema = z.object({
+  code: z.string().min(1).optional(),
+  name: z.string().min(1).optional(),
+  unit: z.string().min(1).optional(),
+  min_stock_level: z.number().min(0).optional(),
+});
+
+export const productCostSchema = z.object({
+  unit_cost: z.number().positive(),
+  effective_date: z.string().datetime().or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)),
+  notes: z.string().optional(),
+});
+
+export const workOrderSchema = z.object({
+  title: z.string().min(1),
+  description: z.string().optional(),
+  client_type: z.enum(['izban', 'belediye', 'kurum_ici', 'diger']),
+  assigned_to: z.string().uuid().optional(),
+  external_ref: z.string().max(100).optional(),
+});
+
+export const workOrderUpdateSchema = z.object({
+  title: z.string().min(1).optional(),
+  description: z.string().optional(),
+  client_type: z.enum(['izban', 'belediye', 'kurum_ici', 'diger']).optional(),
+  status: z.enum(['draft', 'open', 'in_progress', 'completed', 'cancelled']).optional(),
+  assigned_to: z.string().uuid().nullable().optional(),
+  external_ref: z.string().max(100).nullable().optional(),
+});
+
+export const workOrderItemSchema = z.object({
+  product_id: z.string().uuid(),
+  requested_quantity: z.number().positive(),
+});
+
+export const workOrderItemUpdateSchema = z.object({
+  approved_quantity: z.number().min(0).optional(),
+  used_quantity: z.number().min(0).optional(),
+});
+
+export const stockMovementSchema = z.object({
+  product_id: z.string().uuid(),
+  work_order_id: z.string().uuid().optional(),
+  movement_type: z.enum(['IN', 'OUT']),
+  quantity: z.number().positive(),
+  notes: z.string().optional(),
+  supplier_name: z.string().max(200).optional(),
+  invoice_no: z.string().max(100).optional(),
+});
+
+// Semantics: hours_worked = quantity (hours OR days), hourly_rate = unit price (per hour OR per day);
+// cost math stays quantity × rate. Column names intentionally reused (accepted MVP naming trade-off).
+export const laborLogSchema = z.object({
+  user_id: z.string().uuid(),
+  hours_worked: z.number().positive(),
+  hourly_rate: z.number().positive(),
+  date: z.string().datetime().or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)),
+  notes: z.string().optional(),
+  rate_unit: z.enum(['hourly', 'daily']).optional(),
+});
+
+export const equipmentLogSchema = z.object({
+  equipment_type: z.string().min(1),
+  description: z.string().optional(),
+  specs: z.string().optional(),
+  rental_cost: z.number().min(0),
+  date: z.string().datetime().or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)),
+  notes: z.string().optional(),
+});
+
+// ──── Equipment Catalog ────
+export const equipmentSchema = z.object({
+  name: z.string().min(1),
+  equipment_type: z.string().min(1),
+  ownership: z.enum(['owned', 'rented']).optional(),
+  status: z.enum(['available', 'in_use', 'maintenance']).optional(),
+  specs: z.string().optional(),
+  serial_or_plate_no: z.string().optional(),
+  default_supplier_name: z.string().optional(),
+  default_rate_unit: z.enum(['hourly', 'daily', 'fixed']).optional(),
+  default_rate_cost: z.number().min(0).optional(),
+});
+
+export const equipmentUpdateSchema = z.object({
+  name: z.string().min(1).optional(),
+  equipment_type: z.string().min(1).optional(),
+  ownership: z.enum(['owned', 'rented']).optional(),
+  status: z.enum(['available', 'in_use', 'maintenance']).optional(),
+  specs: z.string().nullable().optional(),
+  serial_or_plate_no: z.string().nullable().optional(),
+  default_supplier_name: z.string().nullable().optional(),
+  default_rate_unit: z.enum(['hourly', 'daily', 'fixed']).nullable().optional(),
+  default_rate_cost: z.number().min(0).nullable().optional(),
+  is_active: z.boolean().optional(),
+});
+
+// ──── Equipment Assignment (work order scoped) ────
+export const equipmentAssignmentSchema = z.object({
+  equipment_id: z.string().uuid(),
+  start_date: z.string().datetime().or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)),
+  end_date: z.string().datetime().or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).optional(),
+  supplier_name: z.string().optional(),
+  rate_unit: z.enum(['hourly', 'daily', 'fixed']),
+  quantity_units: z.number().min(0).optional(),
+  cost: z.number().min(0),
+  notes: z.string().optional(),
+});
+
+export const equipmentAssignmentUpdateSchema = z.object({
+  end_date: z.string().datetime().or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).optional(),
+  supplier_name: z.string().nullable().optional(),
+  rate_unit: z.enum(['hourly', 'daily', 'fixed']).optional(),
+  quantity_units: z.number().min(0).nullable().optional(),
+  cost: z.number().min(0).optional(),
+  notes: z.string().nullable().optional(),
+});
+import dotenv from 'dotenv';
+dotenv.config();
+
+import express from 'express';
+import cors from 'cors';
+import helmet from 'helmet';
+import morgan from 'morgan';
+import rateLimit from 'express-rate-limit';
+import { errorHandler } from './middleware/errorHandler';
+
+import authRoutes from './routes/auth';
+import usersRoutes from './routes/users';
+import productsRoutes from './routes/products';
+import workOrdersRoutes from './routes/workOrders';
+import stockMovementsRoutes from './routes/stockMovements';
+import dashboardRoutes from './routes/dashboard';
+import reportsRoutes from './routes/reports';
+import equipmentRoutes from './routes/equipment';
+
+const app = express();
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  message: { error: 'Çok fazla giriş denemesi yapıldı, lütfen 15 dakika sonra tekrar deneyiniz.' }
+});
+
+app.use(helmet());
+app.use(cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:5173' }));
+app.use(morgan('dev'));
+app.use(express.json());
+
+app.use('/api/auth/login', loginLimiter);
+app.use('/api/auth', authRoutes);
+app.use('/api/users', usersRoutes);
+app.use('/api/products', productsRoutes);
+app.use('/api/work-orders', workOrdersRoutes);
+app.use('/api/stock-movements', stockMovementsRoutes);
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/reports', reportsRoutes);
+app.use('/api/equipment', equipmentRoutes);
+
+app.use(errorHandler);
+
+export default app;
+{
+  "compilerOptions": { "ignoreDeprecations": "6.0",
+    "target": "ES2020",
+    "module": "commonjs",
+    "lib": ["ES2020"],
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}
+{
+  "name": "frontend",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "oxlint",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@base-ui/react": "^1.7.0",
+    "@fontsource-variable/geist": "^5.3.0",
+    "@hookform/resolvers": "^5.9.1",
+    "@tanstack/react-query": "^5.102.0",
+    "axios": "^1.19.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "date-fns": "^4.4.0",
+    "lucide-react": "^1.33.0",
+    "next-themes": "^0.4.6",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-hook-form": "^7.86.0",
+    "react-router-dom": "^7.18.2",
+    "recharts": "^3.10.1",
+    "shadcn": "^4.19.0",
+    "sonner": "^2.0.8",
+    "tailwind-merge": "^3.6.0",
+    "tw-animate-css": "^1.4.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^24.13.3",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.4",
+    "oxlint": "^1.75.0",
+    "tailwindcss": "^4.3.3",
+    "typescript": "~6.0.2",
+    "vite": "^8.2.0"
+  }
+}
+import { useState, useEffect } from 'react';
+
+export function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(false);
+
+  useEffect(() => {
+    const media = window.matchMedia(query);
+    if (media.matches !== matches) {
+      setMatches(media.matches);
+    }
+    const listener = (event: MediaQueryListEvent) => setMatches(event.matches);
+    media.addEventListener('change', listener);
+    return () => media.removeEventListener('change', listener);
+  }, [matches, query]);
+
+  return matches;
+}
+import { clsx, type ClassValue } from "clsx"
+import { twMerge } from "tailwind-merge"
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
+}
+import axios from 'axios';
+import type { User, Product, ProductCostHistory, WorkOrder, StockMovement, DashboardSummary, AuthResponse, LoginInput, PaginatedResponse, Equipment, EquipmentAssignment } from './types';
+
+const api = axios.create({ baseURL: '/api' });
+
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token');
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+
+api.interceptors.response.use(
+  (res) => res,
+  (error) => {
+    const isAuthCall = (error.config?.url ?? '').includes('/auth/');
+    if (error.response?.status === 401 && !isAuthCall) {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      window.location.href = '/login';
+    }
+    return Promise.reject(error);
+  }
+);
+
+// Auth
+export const authApi = {
+  login: (data: LoginInput) => api.post<AuthResponse>('/auth/login', data).then(r => r.data),
+  register: (data: { name: string; email: string; password: string; role?: string; is_authorized_creator?: boolean }) => api.post<{ user: User }>('/auth/register', data).then(r => r.data),
+  me: () => api.get<User>('/auth/me').then(r => r.data),
+  updateProfile: (data: { first_name: string; last_name: string; email: string; current_password: string }) =>
+    api.put<{ success: boolean }>('/auth/profile', data).then(r => r.data),
+  changePassword: (data: { current_password: string; new_password: string }) =>
+    api.put<{ success: boolean }>('/auth/password', data).then(r => r.data),
+};
+
+// Products
+export const productsApi = {
+  list: (params?: { search?: string; page?: number; limit?: number }) => 
+    api.get<PaginatedResponse<Product>>('/products', { params }).then(r => r.data),
+  get: (id: string) => api.get<Product & { cost_history: ProductCostHistory[] }>(`/products/${id}`).then(r => r.data),
+  getCostHistory: (id: string) => api.get<ProductCostHistory[]>(`/products/${id}/costs`).then(r => r.data),
+  getMovements: (id: string) => api.get<StockMovement[]>(`/products/${id}/movements`).then(r => r.data),
+  create: (data: Partial<Product> & { initial_cost?: number }) => api.post<Product>('/products', data).then(r => r.data),
+  update: (id: string, data: Partial<Product>) => api.put<{ success: boolean }>(`/products/${id}`, data).then(r => r.data),
+  delete: (id: string) => api.delete<{ success: boolean }>(`/products/${id}`).then(r => r.data),
+  addCost: (id: string, data: { unit_cost: number; effective_date: string; notes?: string }) => 
+    api.post(`/products/${id}/cost`, data).then(r => r.data),
+  updateCost: (id: string, costId: string, data: { unit_cost: number; effective_date: string; notes?: string }) =>
+    api.put(`/products/${id}/costs/${costId}`, data).then(r => r.data),
+  criticalStock: () => api.get<Product[]>('/products/alerts/critical-stock').then(r => r.data),
+};
+
+// Work Orders
+export const workOrdersApi = {
+  list: (params?: { search?: string; status?: string; approval_status?: 'pending' | 'approved' | 'rejected'; client_type?: string; page?: number; limit?: number }) => 
+    api.get<PaginatedResponse<WorkOrder>>('/work-orders', { params }).then(r => r.data),
+  get: (id: string) => api.get<WorkOrder>(`/work-orders/${id}`).then(r => r.data),
+  create: (data: { title: string; description?: string; client_type: string; assigned_to?: string; external_ref?: string }) => 
+    api.post<WorkOrder>('/work-orders', data).then(r => r.data),
+  update: (id: string, data: Partial<WorkOrder>) => api.put<{ success: boolean }>(`/work-orders/${id}`, data).then(r => r.data),
+  delete: (id: string) => api.delete<{ success: boolean }>(`/work-orders/${id}`).then(r => r.data),
+  approve: (id: string) => api.post<{ success: boolean }>(`/work-orders/${id}/approve`).then(r => r.data),
+  reject: (id: string) => api.post<{ success: boolean }>(`/work-orders/${id}/reject`).then(r => r.data),
+  addItem: (id: string, data: { product_id: string; requested_quantity: number }) => 
+    api.post<{ success: boolean }>(`/work-orders/${id}/items`, data).then(r => r.data),
+  updateItem: (id: string, itemId: string, data: { approved_quantity?: number; used_quantity?: number }) => 
+    api.put<{ success: boolean }>(`/work-orders/${id}/items/${itemId}`, data).then(r => r.data),
+  addLabor: (id: string, data: { user_id: string; hours_worked: number; hourly_rate: number; date: string; notes?: string; rate_unit?: 'hourly' | 'daily' }) => 
+    api.post<{ success: boolean }>(`/work-orders/${id}/labor`, data).then(r => r.data),
+  addEquipment: (id: string, data: { equipment_type: string; description?: string; specs?: string; rental_cost: number; date: string }) => 
+    api.post<{ success: boolean }>(`/work-orders/${id}/equipment`, data).then(r => r.data),
+  deleteItem: (id: string, itemId: string) =>
+    api.delete<{ success: boolean }>(`/work-orders/${id}/items/${itemId}`).then(r => r.data),
+  deleteLabor: (id: string, logId: string) =>
+    api.delete<{ success: boolean }>(`/work-orders/${id}/labor/${logId}`).then(r => r.data),
+  deleteEquipment: (id: string, logId: string) =>
+    api.delete<{ success: boolean }>(`/work-orders/${id}/equipment/${logId}`).then(r => r.data),
+  addEquipmentAssignment: (id: string, data: { equipment_id: string; start_date: string; end_date?: string; supplier_name?: string; rate_unit: string; quantity_units?: number; cost: number; notes?: string }) =>
+    api.post<{ success: boolean }>(`/work-orders/${id}/equipment-assignments`, data).then(r => r.data),
+  updateEquipmentAssignment: (id: string, assignmentId: string, data: { end_date?: string; supplier_name?: string; rate_unit?: string; quantity_units?: number; cost?: number; notes?: string }) =>
+    api.put<{ success: boolean }>(`/work-orders/${id}/equipment-assignments/${assignmentId}`, data).then(r => r.data),
+  deleteEquipmentAssignment: (id: string, assignmentId: string) =>
+    api.delete<{ success: boolean }>(`/work-orders/${id}/equipment-assignments/${assignmentId}`).then(r => r.data),
+};
+
+// Stock Movements
+export const stockApi = {
+  list: (params?: { movement_type?: string; type?: string; product_id?: string; is_approved?: string; page?: number; limit?: number }) => {
+    const { type, movement_type, ...rest } = params ?? {};
+    return api.get<PaginatedResponse<StockMovement>>('/stock-movements', {
+      params: { ...rest, movement_type: movement_type ?? type },
+    }).then(r => r.data);
+  },
+  create: (data: { product_id: string; movement_type?: 'IN' | 'OUT'; type?: 'IN' | 'OUT'; quantity: number; notes?: string; work_order_id?: string; supplier_name?: string; invoice_no?: string }) => 
+    api.post<{ success: boolean; message: string }>('/stock-movements', {
+      ...data,
+      movement_type: data.movement_type || data.type || 'IN',
+    }).then(r => r.data),
+  approve: (id: string) => api.post<{ success: boolean }>(`/stock-movements/${id}/approve`).then(r => r.data),
+  reject: (id: string) => api.post<{ success: boolean }>(`/stock-movements/${id}/reject`).then(r => r.data),
+};
+
+// Users
+export const usersApi = {
+  list: (params?: { limit?: number; page?: number; include_inactive?: string }) => api.get<User[]>('/users', { params }).then(r => r.data),
+  get: (id: string) => api.get<User>(`/users/${id}`).then(r => r.data),
+  update: (id: string, data: Partial<User>) => api.put<{ success: boolean }>(`/users/${id}`, data).then(r => r.data),
+  delete: (id: string) => api.delete<{ success: boolean }>(`/users/${id}`).then(r => r.data),
+};
+
+// Dashboard
+export const dashboardApi = {
+  summary: () => api.get<DashboardSummary>('/dashboard/summary').then(r => r.data),
+  recentMovements: () => api.get<StockMovement[]>('/dashboard/recent-movements').then(r => r.data),
+  workOrderStats: () => api.get<Record<string, number>>('/dashboard/work-order-stats').then(r => r.data),
+};
+
+// Reports
+export const reportsApi = {
+  stockMovements: (params?: { start_date?: string; end_date?: string }) => 
+    api.get('/reports/stock-movements', { params }).then(r => r.data),
+  workOrderCosts: (id: string) => api.get(`/reports/work-order-costs/${id}`).then(r => r.data),
+  costByClient: (params?: { start_date?: string; end_date?: string }) => 
+    api.get('/reports/cost-by-client', { params }).then(r => r.data),
+};
+
+// Equipment
+export const equipmentApi = {
+  list: (params?: { search?: string; status?: string; ownership?: string; page?: number; limit?: number }) =>
+    api.get<PaginatedResponse<Equipment>>('/equipment', { params }).then(r => r.data),
+  mini: () => api.get<Equipment[]>('/equipment/mini').then(r => r.data),
+  get: (id: string) => api.get<Equipment & { assignments: EquipmentAssignment[]; total_cost: number }>(`/equipment/${id}`).then(r => r.data),
+  create: (data: Partial<Equipment>) => api.post<Equipment>('/equipment', data).then(r => r.data),
+  update: (id: string, data: Partial<Equipment>) => api.put<{ success: boolean }>(`/equipment/${id}`, data).then(r => r.data),
+  delete: (id: string) => api.delete<{ success: boolean }>(`/equipment/${id}`).then(r => r.data),
+};
+
+export default api;
+export const APP_NAME = 'ANSAVA';
+export const APP_COMPANY = 'Ansava Mühendislik';
+
+export const WORK_ORDER_STATUSES: Record<string, { label: string; color: string }> = {
+  draft: { label: 'Taslak', color: 'bg-gray-100 text-gray-800 dark:bg-white/10 dark:text-slate-200' },
+  open: { label: 'Açık', color: 'bg-blue-100 text-blue-800 dark:bg-blue-500/15 dark:text-blue-300' },
+  in_progress: { label: 'Devam Ediyor', color: 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300' },
+  completed: { label: 'Tamamlandı', color: 'bg-green-100 text-green-800 dark:bg-green-500/15 dark:text-green-300' },
+  cancelled: { label: 'İptal', color: 'bg-red-100 text-red-800 dark:bg-red-500/15 dark:text-red-300' },
+};
+
+export const APPROVAL_STATUSES: Record<string, { label: string; color: string }> = {
+  pending: { label: 'Beklemede', color: 'bg-violet-100 text-violet-800 dark:bg-violet-500/15 dark:text-violet-300' },
+  approved: { label: 'Onaylandı', color: 'bg-green-100 text-green-800 dark:bg-green-500/15 dark:text-green-300' },
+  rejected: { label: 'Reddedildi', color: 'bg-red-100 text-red-800 dark:bg-red-500/15 dark:text-red-300' },
+};
+
+export const CLIENT_TYPES: Record<string, string> = {
+  izban: 'İZBAN',
+  belediye: 'Belediye',
+  kurum_ici: 'Kurum İçi',
+  diger: 'Diğer',
+};
+
+export const MOVEMENT_TYPES: Record<string, { label: string; color: string }> = {
+  IN: { label: 'Giriş', color: 'bg-green-100 text-green-800 dark:bg-green-500/15 dark:text-green-300' },
+  OUT: { label: 'Çıkış', color: 'bg-red-100 text-red-800 dark:bg-red-500/15 dark:text-red-300' },
+};
+
+export const USER_ROLES: Record<string, string> = {
+  admin: 'Yönetici',
+  manager: 'Müdür',
+  field_worker: 'Saha Personeli',
+};
+
+export const EQUIPMENT_STATUSES: Record<string, { label: string; color: string }> = {
+  available: { label: 'Boşta', color: 'bg-green-100 text-green-800 dark:bg-green-500/15 dark:text-green-300' },
+  in_use: { label: 'Kullanımda', color: 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300' },
+  maintenance: { label: 'Bakımda', color: 'bg-red-100 text-red-800 dark:bg-red-500/15 dark:text-red-300' },
+};
+
+export const OWNERSHIP_TYPES: Record<string, { label: string; color: string }> = {
+  owned: { label: 'Kendi Malı', color: 'bg-blue-100 text-blue-800 dark:bg-blue-500/15 dark:text-blue-300' },
+  rented: { label: 'Kiralık', color: 'bg-violet-100 text-violet-800 dark:bg-violet-500/15 dark:text-violet-300' },
+};
+
+export const RATE_UNITS: Record<string, string> = {
+  hourly: 'Saatlik',
+  daily: 'Günlük',
+  fixed: 'Sabit',
+};
+
+export const UNITS = [
+  { value: 'adet', label: 'Adet' },
+  { value: 'kg', label: 'Kg' },
+  { value: 'metre', label: 'Metre' },
+  { value: 'litre', label: 'Litre' },
+  { value: 'kutu', label: 'Kutu' },
+  { value: 'paket', label: 'Paket' },
+  { value: 'ton', label: 'Ton' },
+  { value: 'takım', label: 'Takım' },
+];
+
+// Derived lookup maps for StatusBadge and other components
+const deriveMap = (source: Record<string, { label: string; color: string }>, key: 'label' | 'color') =>
+  Object.fromEntries(Object.entries(source).map(([k, v]) => [k, v[key]]));
+
+export const WORK_ORDER_STATUS_COLORS: Record<string, string> = deriveMap(WORK_ORDER_STATUSES, 'color');
+export const WORK_ORDER_STATUS_LABELS: Record<string, string> = deriveMap(WORK_ORDER_STATUSES, 'label');
+export const APPROVAL_STATUS_COLORS: Record<string, string> = deriveMap(APPROVAL_STATUSES, 'color');
+export const APPROVAL_STATUS_LABELS: Record<string, string> = deriveMap(APPROVAL_STATUSES, 'label');
+export const MOVEMENT_TYPE_COLORS: Record<string, string> = deriveMap(MOVEMENT_TYPES, 'color');
+export const MOVEMENT_TYPE_LABELS: Record<string, string> = deriveMap(MOVEMENT_TYPES, 'label');
+type CurrencyFormatOptions = Pick<Intl.NumberFormatOptions, 'minimumFractionDigits' | 'maximumFractionDigits'>;
+
+export function formatCurrency(value: number | string | null | undefined, options: CurrencyFormatOptions = {}) {
+  const numericValue = Number(value ?? 0);
+  return new Intl.NumberFormat('tr-TR', {
+    style: 'currency',
+    currency: 'TRY',
+    maximumFractionDigits: 2,
+    ...options,
+  }).format(Number.isFinite(numericValue) ? numericValue : 0);
+}
+
+export function formatDate(dateStr: string | Date | null | undefined) {
+  if (!dateStr) return '-';
+  return new Date(dateStr).toLocaleDateString('tr-TR');
+}
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  role: 'admin' | 'manager' | 'field_worker';
+  is_authorized_creator: boolean;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Product {
+  id: string;
+  code: string;
+  name: string;
+  unit: string;
+  current_stock: number;
+  min_stock_level: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  latest_cost?: number;
+}
+
+export interface ProductCostHistory {
+  id: string;
+  product_id: string;
+  unit_cost: number;
+  effective_date: string;
+  notes?: string;
+  created_at: string;
+}
+
+export interface WorkOrder {
+  id: string;
+  order_no: string;
+  title: string;
+  description?: string;
+  client_type: 'izban' | 'belediye' | 'kurum_ici' | 'diger';
+  status: 'draft' | 'open' | 'in_progress' | 'completed' | 'cancelled';
+  approval_status: 'pending' | 'approved' | 'rejected';
+  created_by: string;
+  assigned_to?: string;
+  approved_by?: string;
+  approved_at?: string;
+  external_ref?: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  creator_name?: string;
+  assignee_name?: string;
+  items?: WorkOrderItem[];
+  labor_logs?: LaborLog[];
+  equipment_logs?: EquipmentLog[];
+  equipment_assignments?: EquipmentAssignment[];
+}
+
+export interface WorkOrderItem {
+  id: string;
+  work_order_id: string;
+  product_id: string;
+  requested_quantity: number;
+  approved_quantity?: number;
+  used_quantity: number;
+  created_at: string;
+  product_name?: string;
+  product_code?: string;
+  product_unit?: string;
+}
+
+export interface StockMovement {
+  id: string;
+  product_id: string;
+  work_order_id?: string;
+  movement_type: 'IN' | 'OUT';
+  quantity: number;
+  is_approved: boolean;
+  approved_by?: string;
+  approved_at?: string;
+  notes?: string;
+  supplier_name?: string;
+  invoice_no?: string;
+  created_by: string;
+  created_at: string;
+  product_name?: string;
+  product_code?: string;
+  creator_name?: string;
+  approver_name?: string;
+  is_rejected?: boolean;
+  rejected_by?: string;
+  rejected_at?: string;
+}
+
+export interface LaborLog {
+  id: string;
+  work_order_id: string;
+  user_id: string;
+  hours_worked: number;
+  hourly_rate: number;
+  date: string;
+  notes?: string;
+  created_at: string;
+  user_name?: string;
+  rate_unit?: 'hourly' | 'daily';
+}
+
+export interface EquipmentLog {
+  id: string;
+  work_order_id: string;
+  equipment_type: string;
+  description?: string;
+  specs?: string;
+  rental_cost: number;
+  date: string;
+  notes?: string;
+  created_at: string;
+}
+
+export interface Equipment {
+  id: string;
+  name: string;
+  equipment_type: string;
+  ownership: 'owned' | 'rented';
+  status: 'available' | 'in_use' | 'maintenance';
+  specs?: string;
+  serial_or_plate_no?: string;
+  default_supplier_name?: string;
+  default_rate_unit?: 'hourly' | 'daily' | 'fixed';
+  default_rate_cost?: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EquipmentAssignment {
+  id: string;
+  equipment_id: string;
+  work_order_id: string;
+  start_date: string;
+  end_date?: string;
+  supplier_name?: string;
+  rate_unit: 'hourly' | 'daily' | 'fixed';
+  quantity_units?: number;
+  cost: number;
+  notes?: string;
+  created_by: string;
+  created_at: string;
+  equipment_name?: string;
+  equipment_type?: string;
+  ownership?: string;
+  serial_or_plate_no?: string;
+  creator_name?: string;
+  order_no?: string;
+  work_order_title?: string;
+}
+
+export interface DashboardSummary {
+  total_products: number;
+  total_stock_value: number;
+  open_work_orders: number;
+  critical_stock_count: number;
+  pending_approvals: number;
+}
+
+export interface PaginatedResponse<T> {
+  data: T[];
+  pagination: {
+    total: number;
+    page: number;
+    limit: number;
+    pages: number;
+  };
+}
+
+export interface LoginInput {
+  email: string;
+  password: string;
+}
+
+export interface AuthResponse {
+  token: string;
+  user: User;
+}
+{
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.app.json" },
+    { "path": "./tsconfig.node.json" }
+  ],
+  "compilerOptions": {
+    "noUnusedLocals": false,
+    "noUnusedParameters": false, "ignoreDeprecations": "6.0",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  }
+}
+FROM node:22-alpine as build
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+RUN npm run build
+
+FROM nginx:alpine
+COPY --from=build /app/dist /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+export default defineConfig({
+  plugins: [
+    react(),
+    tailwindcss(),
+  ],
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+    },
+  },
+  server: {
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      },
+    },
+  },
+});

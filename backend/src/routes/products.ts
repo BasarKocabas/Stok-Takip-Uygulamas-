@@ -14,7 +14,13 @@ router.get('/', async (req: AuthRequest, res: Response, next: NextFunction): Pro
     const limit = parseInt(req.query.limit as string) || 10;
     const offset = (page - 1) * limit;
     
-    const query = db('products').where({ is_active: true });
+    let query = db('products');
+    
+    if (req.user?.role === 'admin' && req.query.include_inactive === 'true') {
+      // Admin requesting inactive items: do not filter by is_active
+    } else {
+      query = query.where({ is_active: true });
+    }
     
     if (req.query.search) {
       const search = `%${req.query.search}%`;
@@ -70,7 +76,13 @@ router.get('/:id/movements', async (req: AuthRequest, res: Response, next: NextF
 
 router.get('/:id', async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const product = await db('products').where({ id: req.params.id, is_active: true }).first();
+    let query = db('products').where({ id: req.params.id });
+    
+    if (req.user?.role !== 'admin' || req.query.include_inactive !== 'true') {
+      query = query.where({ is_active: true });
+    }
+    
+    const product = await query.first();
     if (!product) {
       res.status(404).json({ error: 'Ürün bulunamadı' });
       return;
@@ -122,7 +134,12 @@ router.put('/:id', requireAdmin, validateRequest(productUpdateSchema), async (re
 
 router.delete('/:id', requireAdmin, async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
-    await db('products').where({ id: req.params.id }).update({ is_active: false, updated_at: db.fn.now() });
+    await db('products').where({ id: req.params.id }).update({ 
+      is_active: false,
+      deactivated_by: req.user?.id,
+      deactivated_at: db.fn.now(),
+      updated_at: db.fn.now() 
+    });
     res.json({ success: true });
   } catch (error) {
     next(error);

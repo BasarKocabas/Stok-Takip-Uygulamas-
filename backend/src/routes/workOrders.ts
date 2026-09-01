@@ -53,15 +53,20 @@ router.get('/', async (req: AuthRequest, res: Response, next: NextFunction): Pro
     const limit = parseInt(req.query.limit as string) || 10;
     const offset = (page - 1) * limit;
 
-    const query = db('work_orders')
+    let query = db('work_orders')
       .leftJoin('users as assignee', 'work_orders.assigned_to', 'assignee.id')
       .leftJoin('users as creator', 'work_orders.created_by', 'creator.id')
       .select(
         'work_orders.*',
         'assignee.name as assignee_name',
         'creator.name as creator_name'
-      )
-      .where({ 'work_orders.is_active': true });
+      );
+    
+    if (req.user?.role === 'admin' && req.query.include_inactive === 'true') {
+      // Admin requesting inactive items: do not filter by is_active
+    } else {
+      query = query.where({ 'work_orders.is_active': true });
+    }
     
     if (req.query.search) {
       const s = `%${req.query.search}%`;
@@ -85,7 +90,7 @@ router.get('/', async (req: AuthRequest, res: Response, next: NextFunction): Pro
 
 router.get('/:id', async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const order = await db('work_orders')
+    let query = db('work_orders')
       .leftJoin('users as assignee', 'work_orders.assigned_to', 'assignee.id')
       .leftJoin('users as creator', 'work_orders.created_by', 'creator.id')
       .select(
@@ -93,8 +98,13 @@ router.get('/:id', async (req: AuthRequest, res: Response, next: NextFunction): 
         'assignee.name as assignee_name',
         'creator.name as creator_name'
       )
-      .where({ 'work_orders.id': req.params.id, 'work_orders.is_active': true })
-      .first();
+      .where({ 'work_orders.id': req.params.id });
+      
+    if (req.user?.role !== 'admin' || req.query.include_inactive !== 'true') {
+      query = query.where({ 'work_orders.is_active': true });
+    }
+
+    const order = await query.first();
 
     if (!order) {
       res.status(404).json({ error: 'İş emri bulunamadı' });
@@ -239,7 +249,15 @@ router.post('/:id/items', validateRequest(workOrderItemSchema), async (req: Auth
       return;
     }
     const id = uuidv4();
-    await db('work_order_items').insert({ id, work_order_id: req.params.id, ...req.body });
+    try {
+      await db('work_order_items').insert({ id, work_order_id: req.params.id, ...req.body });
+    } catch (e: any) {
+      if (/unique/i.test(e?.message ?? '')) {
+        res.status(400).json({ error: 'Bu üründen zaten bir talep satırı var, miktarı düzenleyin' });
+        return;
+      }
+      throw e;
+    }
     res.status(201).json({ success: true });
   } catch (error) {
     next(error);
@@ -249,6 +267,16 @@ router.post('/:id/items', validateRequest(workOrderItemSchema), async (req: Auth
 router.put('/:id/items/:itemId', validateRequest(workOrderItemUpdateSchema), async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
     if (!(await assertOrderWritable(req, res))) return;
+
+    // NEW: only admin/manager can set approved_quantity
+    if (req.body.approved_quantity != null) {
+      const isPrivileged = req.user?.role === 'admin' || req.user?.role === 'manager';
+      if (!isPrivileged) {
+        res.status(403).json({ error: 'Onaylı miktarı sadece yönetici belirleyebilir' });
+        return;
+      }
+    }
+
     const item = await db('work_order_items').where({ id: req.params.itemId, work_order_id: req.params.id }).first();
     if (!item) {
       res.status(404).json({ error: 'Kalem bulunamadı' });
@@ -328,6 +356,21 @@ router.post('/:id/equipment-assignments', validateRequest(equipmentAssignmentSch
       if (eq.status === 'in_use' && req.user?.role === 'field_worker') {
         res.status(400).json({ error: 'Bu ekipman şu anda kullanımda, yöneticinize başvurun' });
         return;
+      }
+
+      // NEW: sanity-check submitted cost against the catalog default rate
+      const { rate_unit, quantity_units, cost } = req.body;
+      if (rate_unit !== 'fixed' && quantity_units != null && eq.default_rate_cost != null) {
+        const expected = Number(quantity_units) * Number(eq.default_rate_cost);
+        const submitted = Number(cost);
+        const tolerance = Math.max(expected * 0.05, 1); // 5% or 1 unit, whichever is bigger
+        if (Math.abs(submitted - expected) > tolerance) {
+          res.status(400).json({
+            error: `Girilen maliyet (${submitted}) beklenen maliyetten (${expected.toFixed(2)}) çok farklı. Kontrol edin veya farklı bir tedarikçi/fiyat notu ekleyin.`,
+            expected_cost: expected,
+          });
+          return; // IMPORTANT: return early to prevent insertion
+        }
       }
 
       const id = uuidv4();
@@ -478,7 +521,12 @@ router.delete('/:id', requireAdmin, async (req: AuthRequest, res: Response, next
   try {
     const order = await db('work_orders').where({ id: req.params.id }).first();
     if (!order) { res.status(404).json({ error: 'İş emri bulunamadı' }); return; }
-    await db('work_orders').where({ id: req.params.id }).update({ is_active: false, updated_at: db.fn.now() });
+    await db('work_orders').where({ id: req.params.id }).update({ 
+      is_active: false, 
+      deactivated_by: req.user?.id, 
+      deactivated_at: db.fn.now(), 
+      updated_at: db.fn.now() 
+    });
     res.json({ success: true });
   } catch (error) { next(error); }
 });
