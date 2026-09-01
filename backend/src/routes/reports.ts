@@ -27,6 +27,16 @@ router.get('/stock-movements', async (req: AuthRequest, res: Response, next: Nex
 
 router.get('/work-order-costs/:id', async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
+    const order = await db('work_orders').where({ id: req.params.id }).first();
+    if (!order) {
+      res.status(404).json({ error: 'İş emri bulunamadı' });
+      return;
+    }
+    if (order.approval_status === 'rejected') {
+      res.status(409).json({ error: 'Reddedilmiş iş emirlerinin maliyet raporu oluşturulamaz' });
+      return;
+    }
+
     const [matResult] = await db('work_order_items as wi')
       .where({ 'wi.work_order_id': req.params.id })
       .select(
@@ -95,7 +105,7 @@ router.get('/cost-by-client', async (req: AuthRequest, res: Response, next: Next
         SELECT work_order_id, SUM(cost) AS equipment_cost
         FROM equipment_assignments GROUP BY work_order_id
       ) eq ON eq.work_order_id = wo.id
-      WHERE wo.is_active = 1 ${dateClause}
+      WHERE wo.is_active = 1 AND wo.approval_status = 'approved' ${dateClause}
       GROUP BY wo.client_type
     `, bindings);
     

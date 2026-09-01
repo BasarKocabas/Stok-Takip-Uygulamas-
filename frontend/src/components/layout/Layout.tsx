@@ -47,8 +47,7 @@ export const Layout: React.FC = () => {
         {/* Mobile Top Header */}
         <header className="sticky top-0 z-30 flex items-center justify-between border-b border-slate-800 bg-slate-900 px-4 py-3 md:hidden">
           <div className="flex items-center gap-2 text-white">
-            <img src="/ansava.png" alt={APP_NAME} className="h-6 w-6 shrink-0 object-contain" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
-            <span className="font-display text-lg font-bold tracking-[0.14em]">{APP_NAME}</span>
+            <img src="/izbeton-logo.png" alt="İzbeton" className="h-23 w-auto shrink-0 object-contain" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
           </div>
           <button
             type="button"

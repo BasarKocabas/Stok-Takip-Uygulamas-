@@ -87,8 +87,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
           <aside className="fixed inset-y-0 left-0 flex w-72 flex-col bg-slate-900 text-white shadow-2xl">
             <div className="mb-0 flex items-center justify-between px-4 pt-5">
               <div className="flex items-center gap-3 pl-1 text-white">
-                <img src="/ansava.png" alt={APP_NAME} className="h-8 w-8 shrink-0 object-contain" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
-                <span className="font-display text-xl font-bold tracking-[0.14em]">{APP_NAME}</span>
+                <img src="/izbeton-logo.png" alt="İzbeton" className="h-25 w-auto shrink-0 object-contain" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
               </div>
               <button
                 type="button"
@@ -100,17 +99,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
             </div>
 
             <div className="mb-6 px-4">
-              <div className="flex items-center justify-start pl-1 -mt-3">
+              <div className="flex items-center gap-3 justify-start pl-6 -mt-2">
                 <img 
-                  src="/izbeton-logo.png"
-                  alt="İzbeton"
-                  className="h-14 w-auto object-left object-contain"
+                  src="/ansava-logo-01.png"
+                  alt={APP_NAME}
+                  className="h-7 w-auto object-contain"
                   onError={(e) => { e.currentTarget.style.display = 'none'; }}
                 />
               </div>
-              <div className="mt-2 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-slate-400">
+              <div className="mt-2 flex items-center justify-start pl-2 gap-1.5 text-xs font-medium uppercase tracking-wider text-slate-400">
                 <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                STOK SİSTEMİ
+                STOK TAKİP SİSTEMİ
               </div>
             </div>
 
@@ -147,8 +146,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
         {/* Top Header */}
         <div className="mb-0 flex items-center justify-between px-3">
           <div className="flex items-center gap-3 pl-1 text-white">
-            <img src="/ansava.png" alt={APP_NAME} className="h-8 w-8 shrink-0 object-contain" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
-            {!collapsed && <span className="font-display text-xl font-bold tracking-[0.14em]">{APP_NAME}</span>}
+            <img src="/izbeton-logo.png" alt="İzbeton" className="h-25 w-auto shrink-0 object-contain" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
           </div>
           <button
             onClick={() => setCollapsed(!collapsed)}
@@ -162,17 +160,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
         {/* Brand Logo Card */}
         {!collapsed && (
           <div className="mb-8 px-4">
-            <div className="flex items-center justify-start pl-1 -mt-4">
+            <div className="flex items-center gap-3 justify-start pl-6 -mt-2">
               <img 
-                src="/izbeton-logo.png"
-                alt="İzbeton"
-                className="h-20 w-auto object-left object-contain"
+                src="/ansava-logo-01.png"
+                alt={APP_NAME}
+                className="h-7 w-auto object-contain"
                 onError={(e) => { e.currentTarget.style.display = 'none'; }}
               />
             </div>
-            <div className="mt-2 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-slate-400">
+            <div className="mt-2 flex items-center justify-start pl-2 gap-1.5 text-xs font-medium uppercase tracking-wider text-slate-400">
               <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              İZBAN Monitor
+              STOK SİSTEMİ
             </div>
           </div>
         )}

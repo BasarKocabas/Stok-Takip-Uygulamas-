@@ -97,7 +97,15 @@ router.post('/:id/approve', requireAdmin, async (req: AuthRequest, res: Response
         throw new Error('Ürün bulunamadı');
       }
 
-      if (movement.movement_type === 'OUT') {
+        if (movement.movement_type === 'OUT') {
+        // NEW: parent work order must be approved before stock can leave
+        if (movement.work_order_id) {
+          const wo = await trx('work_orders').where({ id: movement.work_order_id }).first();
+          if (!wo || wo.approval_status !== 'approved') {
+            throw new Error('İş emri onaylanmadan stok çıkışı yapılamaz');
+          }
+        }
+
         if (product.current_stock < movement.quantity) {
           throw new Error('Yetersiz stok');
         }
@@ -137,6 +145,8 @@ router.post('/:id/approve', requireAdmin, async (req: AuthRequest, res: Response
       res.status(400).json({ error: 'Onaylamak için yetersiz stok. İşlem reddedildi.' });
     } else if (error.message === 'Onaylanan miktar aşılıyor') {
       res.status(400).json({ error: 'Bu hareket onaylanırsa kullanılan miktar, onaylanan miktarı aşacak. İşlem reddedildi.' });
+    } else if (error.message === 'İş emri onaylanmadan stok çıkışı yapılamaz') {
+      res.status(400).json({ error: error.message });
     } else if (error.message === 'Ürün bulunamadı' || error.message === 'Geçersiz işlem') {
       res.status(400).json({ error: error.message });
     } else {

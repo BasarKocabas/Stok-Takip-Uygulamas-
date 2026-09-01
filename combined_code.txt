@@ -1273,6 +1273,16 @@ router.get('/stock-movements', async (req: AuthRequest, res: Response, next: Nex
 
 router.get('/work-order-costs/:id', async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
+    const order = await db('work_orders').where({ id: req.params.id }).first();
+    if (!order) {
+      res.status(404).json({ error: 'İş emri bulunamadı' });
+      return;
+    }
+    if (order.approval_status === 'rejected') {
+      res.status(409).json({ error: 'Reddedilmiş iş emirlerinin maliyet raporu oluşturulamaz' });
+      return;
+    }
+
     const [matResult] = await db('work_order_items as wi')
       .where({ 'wi.work_order_id': req.params.id })
       .select(
@@ -1341,7 +1351,7 @@ router.get('/cost-by-client', async (req: AuthRequest, res: Response, next: Next
         SELECT work_order_id, SUM(cost) AS equipment_cost
         FROM equipment_assignments GROUP BY work_order_id
       ) eq ON eq.work_order_id = wo.id
-      WHERE wo.is_active = 1 ${dateClause}
+      WHERE wo.is_active = 1 AND wo.approval_status = 'approved' ${dateClause}
       GROUP BY wo.client_type
     `, bindings);
     
@@ -1451,7 +1461,15 @@ router.post('/:id/approve', requireAdmin, async (req: AuthRequest, res: Response
         throw new Error('Ürün bulunamadı');
       }
 
-      if (movement.movement_type === 'OUT') {
+        if (movement.movement_type === 'OUT') {
+        // NEW: parent work order must be approved before stock can leave
+        if (movement.work_order_id) {
+          const wo = await trx('work_orders').where({ id: movement.work_order_id }).first();
+          if (!wo || wo.approval_status !== 'approved') {
+            throw new Error('İş emri onaylanmadan stok çıkışı yapılamaz');
+          }
+        }
+
         if (product.current_stock < movement.quantity) {
           throw new Error('Yetersiz stok');
         }
@@ -1491,6 +1509,8 @@ router.post('/:id/approve', requireAdmin, async (req: AuthRequest, res: Response
       res.status(400).json({ error: 'Onaylamak için yetersiz stok. İşlem reddedildi.' });
     } else if (error.message === 'Onaylanan miktar aşılıyor') {
       res.status(400).json({ error: 'Bu hareket onaylanırsa kullanılan miktar, onaylanan miktarı aşacak. İşlem reddedildi.' });
+    } else if (error.message === 'İş emri onaylanmadan stok çıkışı yapılamaz') {
+      res.status(400).json({ error: error.message });
     } else if (error.message === 'Ürün bulunamadı' || error.message === 'Geçersiz işlem') {
       res.status(400).json({ error: error.message });
     } else {
@@ -1724,10 +1744,21 @@ router.post('/:id/reject', requireAdmin, async (req: AuthRequest, res: Response,
       return;
     }
 
-    await db('work_orders').where({ id: req.params.id }).update({ 
-      approval_status: 'rejected', 
-      updated_at: db.fn.now() 
+    await db.transaction(async (trx) => {
+      await trx('work_orders').where({ id: req.params.id }).update({
+        approval_status: 'rejected',
+        updated_at: db.fn.now()
+      });
+      // NEW: pending movements of a rejected order become inert ghost rows
+      await trx('stock_movements')
+        .where({ work_order_id: req.params.id, is_approved: false, is_rejected: false })
+        .update({
+          is_rejected: true,
+          rejected_by: req.user?.id,
+          rejected_at: trx.fn.now(),
+        });
     });
+
     res.json({ success: true });
   } catch (error) {
     next(error);
@@ -1748,6 +1779,19 @@ async function assertOrderWritable(req: AuthRequest, res: Response): Promise<boo
   const canWrite = isPrivileged || order.created_by === req.user?.id || order.assigned_to === req.user?.id;
   if (!canWrite) {
     res.status(403).json({ error: 'Bu iş emrine kayıt ekleme veya güncelleme yetkiniz yok' });
+    return false;
+  }
+  return true;
+}
+
+async function assertOrderApproved(req: AuthRequest, res: Response): Promise<boolean> {
+  const order = await db('work_orders').where({ id: req.params.id }).first();
+  if (!order) {
+    res.status(404).json({ error: 'İş emri bulunamadı' });
+    return false;
+  }
+  if (order.approval_status !== 'approved') {
+    res.status(409).json({ error: 'Bu işlem için iş emri önce onaylanmalıdır' });
     return false;
   }
   return true;
@@ -1834,6 +1878,7 @@ router.put('/:id/items/:itemId', validateRequest(workOrderItemUpdateSchema), asy
 router.post('/:id/labor', validateRequest(laborLogSchema), async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
     if (!(await assertOrderWritable(req, res))) return;
+    if (!(await assertOrderApproved(req, res))) return; // NEW
     const id = uuidv4();
     await db('labor_logs').insert({ id, work_order_id: req.params.id, ...req.body });
     res.status(201).json({ success: true });
@@ -1845,6 +1890,7 @@ router.post('/:id/labor', validateRequest(laborLogSchema), async (req: AuthReque
 router.post('/:id/equipment', validateRequest(equipmentLogSchema), async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
     if (!(await assertOrderWritable(req, res))) return;
+    if (!(await assertOrderApproved(req, res))) return; // NEW
     const id = uuidv4();
     await db('equipment_logs').insert({ id, work_order_id: req.params.id, ...req.body });
     res.status(201).json({ success: true });
@@ -1858,6 +1904,7 @@ router.post('/:id/equipment', validateRequest(equipmentLogSchema), async (req: A
 router.post('/:id/equipment-assignments', validateRequest(equipmentAssignmentSchema), async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
     if (!(await assertOrderWritable(req, res))) return;
+    if (!(await assertOrderApproved(req, res))) return; // NEW
     const { equipment_id } = req.body;
 
     await db.transaction(async (trx) => {
@@ -1911,6 +1958,7 @@ router.post('/:id/equipment-assignments', validateRequest(equipmentAssignmentSch
 router.put('/:id/equipment-assignments/:assignmentId', validateRequest(equipmentAssignmentUpdateSchema), async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
     if (!(await assertOrderWritable(req, res))) return;
+    if (!(await assertOrderApproved(req, res))) return; // NEW
 
     await db.transaction(async (trx) => {
       const assignment = await trx('equipment_assignments')

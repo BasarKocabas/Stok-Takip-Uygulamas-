@@ -209,10 +209,21 @@ router.post('/:id/reject', requireAdmin, async (req: AuthRequest, res: Response,
       return;
     }
 
-    await db('work_orders').where({ id: req.params.id }).update({ 
-      approval_status: 'rejected', 
-      updated_at: db.fn.now() 
+    await db.transaction(async (trx) => {
+      await trx('work_orders').where({ id: req.params.id }).update({
+        approval_status: 'rejected',
+        updated_at: db.fn.now()
+      });
+      // NEW: pending movements of a rejected order become inert ghost rows
+      await trx('stock_movements')
+        .where({ work_order_id: req.params.id, is_approved: false, is_rejected: false })
+        .update({
+          is_rejected: true,
+          rejected_by: req.user?.id,
+          rejected_at: trx.fn.now(),
+        });
     });
+
     res.json({ success: true });
   } catch (error) {
     next(error);
@@ -233,6 +244,19 @@ async function assertOrderWritable(req: AuthRequest, res: Response): Promise<boo
   const canWrite = isPrivileged || order.created_by === req.user?.id || order.assigned_to === req.user?.id;
   if (!canWrite) {
     res.status(403).json({ error: 'Bu iş emrine kayıt ekleme veya güncelleme yetkiniz yok' });
+    return false;
+  }
+  return true;
+}
+
+async function assertOrderApproved(req: AuthRequest, res: Response): Promise<boolean> {
+  const order = await db('work_orders').where({ id: req.params.id }).first();
+  if (!order) {
+    res.status(404).json({ error: 'İş emri bulunamadı' });
+    return false;
+  }
+  if (order.approval_status !== 'approved') {
+    res.status(409).json({ error: 'Bu işlem için iş emri önce onaylanmalıdır' });
     return false;
   }
   return true;
@@ -319,6 +343,7 @@ router.put('/:id/items/:itemId', validateRequest(workOrderItemUpdateSchema), asy
 router.post('/:id/labor', validateRequest(laborLogSchema), async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
     if (!(await assertOrderWritable(req, res))) return;
+    if (!(await assertOrderApproved(req, res))) return; // NEW
     const id = uuidv4();
     await db('labor_logs').insert({ id, work_order_id: req.params.id, ...req.body });
     res.status(201).json({ success: true });
@@ -330,6 +355,7 @@ router.post('/:id/labor', validateRequest(laborLogSchema), async (req: AuthReque
 router.post('/:id/equipment', validateRequest(equipmentLogSchema), async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
     if (!(await assertOrderWritable(req, res))) return;
+    if (!(await assertOrderApproved(req, res))) return; // NEW
     const id = uuidv4();
     await db('equipment_logs').insert({ id, work_order_id: req.params.id, ...req.body });
     res.status(201).json({ success: true });
@@ -343,6 +369,7 @@ router.post('/:id/equipment', validateRequest(equipmentLogSchema), async (req: A
 router.post('/:id/equipment-assignments', validateRequest(equipmentAssignmentSchema), async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
     if (!(await assertOrderWritable(req, res))) return;
+    if (!(await assertOrderApproved(req, res))) return; // NEW
     const { equipment_id } = req.body;
 
     await db.transaction(async (trx) => {
@@ -396,6 +423,7 @@ router.post('/:id/equipment-assignments', validateRequest(equipmentAssignmentSch
 router.put('/:id/equipment-assignments/:assignmentId', validateRequest(equipmentAssignmentUpdateSchema), async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
     if (!(await assertOrderWritable(req, res))) return;
+    if (!(await assertOrderApproved(req, res))) return; // NEW
 
     await db.transaction(async (trx) => {
       const assignment = await trx('equipment_assignments')
