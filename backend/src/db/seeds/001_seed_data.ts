@@ -26,9 +26,9 @@ export async function seed(knex: Knex): Promise<void> {
   const workerId = uuidv4();
 
   await knex('users').insert([
-    { id: adminId, name: 'Barış', email: 'admin@ansava.com', password_hash: passwordHash, role: 'admin', is_authorized_creator: true },
-    { id: managerId, name: 'Veysel', email: 'manager@ansava.com', password_hash: passwordHash, role: 'manager', is_authorized_creator: true },
-    { id: workerId, name: 'Mustafa', email: 'worker@ansava.com', password_hash: passwordHash, role: 'field_worker', is_authorized_creator: false },
+    { id: adminId, name: 'Barış', email: 'admin@izbeton.com.tr', password_hash: passwordHash, role: 'admin', is_authorized_creator: true },
+    { id: managerId, name: 'Veysel', email: 'manager@izbeton.com.tr', password_hash: passwordHash, role: 'manager', is_authorized_creator: true },
+    { id: workerId, name: 'Mustafa', email: 'worker@izbeton.com.tr', password_hash: passwordHash, role: 'field_worker', is_authorized_creator: false },
   ]);
 
   const p1 = uuidv4();

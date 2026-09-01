@@ -63,7 +63,7 @@ export default function Login() {
               <div className="flex items-center gap-1.5 ml-1">
                 <img 
                   src="/ansava-logo-01.png" 
-                  alt="Ansava" 
+                  alt="İZBETON"
                   className="h-8 w-auto object-contain translate-y-0.5"
                   onError={(e: any) => { e.currentTarget.style.display = 'none'; }}
                 />

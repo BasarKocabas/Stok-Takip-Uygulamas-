@@ -1,5 +1,5 @@
-export const APP_NAME = 'ANSAVA';
-export const APP_COMPANY = 'Ansava Mühendislik';
+export const APP_NAME = 'İZBETON';
+export const APP_COMPANY = 'İZBETON';
 
 export const WORK_ORDER_STATUSES: Record<string, { label: string; color: string }> = {
   draft: { label: 'Taslak', color: 'bg-gray-100 text-gray-800 dark:bg-white/10 dark:text-slate-200' },

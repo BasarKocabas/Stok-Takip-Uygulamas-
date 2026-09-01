@@ -11,7 +11,7 @@ function resolveSecret(): string {
     throw new Error('JWT_SECRET environment variable is required in production');
   }
   console.warn('[auth] JWT_SECRET yok — dev fallback kullanılıyor');
-  return 'ansava-dev-only-fallback';
+  return 'izbeton-dev-only-fallback';
 }
 
 export const JWT_SECRET: string = resolveSecret();

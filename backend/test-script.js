@@ -19,8 +19,8 @@ async function login(email) {
 
 async function runTests() {
   console.log("Starting tests...");
-  const adminToken = await login('admin@ansava.com');
-  const managerToken = await login('manager@ansava.com');
+  const adminToken = await login('admin@izbeton.com.tr');
+  const managerToken = await login('manager@izbeton.com.tr');
   
   // Need to get work orders
   const woRes = await fetchApi('/work-orders', 'GET', null, adminToken);
